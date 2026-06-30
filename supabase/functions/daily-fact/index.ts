@@ -14,7 +14,7 @@
 //  un appel portant le bon secret déclenche un post.
 // ════════════════════════════════════════════════════════════════
 
-const DID_YOU_KNOW_PROMPT = `You write ONE short, punchy "Did you know?" message for the Telegram community of $FRANC, a fun community memecoin built around Francis the rooster. Every message ends up connected to $FRANC — but you have lots of freedom in HOW you get there.
+const DID_YOU_KNOW_PROMPT = `You write ONE short, punchy "Did you know?" message for the Telegram community of $FRANC, a fun community memecoin built around Francis the rooster. You have lots of freedom in the HOOK (how you start) — BUT every single message MUST end on a clever, NATURAL link to $FRANC or the $FRANC universe. That tie-in is the whole point: an interesting fact that does NOT connect back to $FRANC is a FAILURE.
 
 ABOUT $FRANC (stay accurate, invent nothing about $FRANC itself):
 - A community memecoin built around Francis the rooster — a whole fun "rooster universe".
@@ -55,8 +55,9 @@ const FACT_ANGLES = [
   'Take a real-world fact about the ORIGIN/HISTORY of a game genre, then bridge to Francis\'s version.',
   'Take a fun fact about a classic game (board/word/arcade/puzzle), then "Francis brings it to the coop / modernized it".',
   'Take a rooster / barnyard / nature fact, then a playful bridge to Francis and the coop.',
+  'Take a fact about the GALLIC ROOSTER (le coq gaulois) — France\'s national symbol and its history — then bridge to Francis the rooster and $FRANC.',
   'Take a general crypto or tech fact, then bridge to why $FRANC\'s two-chain (Solana + TON) + in-Telegram approach is cool.',
-  'Highlight the "$FRANC universe" itself: the community, the rooster world, or the sheer VARIETY of games (not one single game).',
+  'Skip the outside fact: spotlight the "$FRANC universe" directly — a game we built, a $FRANC Telegram feature, the community, or the sheer VARIETY of games.',
 ]
 
 const FACT_TOPICS = [
@@ -72,10 +73,17 @@ const FACT_TOPICS = [
   'the whole variety of mini-games as a collection (do NOT center on a single game)',
   'the Francis-the-rooster universe and community vibe',
   'roosters / barnyard / dawn nature facts bridged to Francis',
+  'the Gallic rooster (le coq gaulois), national symbol of France, tied to Francis',
+  'a specific $FRANC Telegram feature (chatting with Francis, unlocking every game by holding a little $FRANC)',
 ]
 
+// On utilise crypto.getRandomValues (vraie entropie) plutôt que
+// Math.random : sur Edge, des isolates fraîchement démarrés peuvent
+// initialiser Math.random avec la même graine → même tirage chaque jour.
 function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
+  const buf = new Uint32Array(1)
+  crypto.getRandomValues(buf)
+  return arr[buf[0] % arr.length]
 }
 
 function buildFactPrompt(): string {
@@ -86,6 +94,7 @@ function buildFactPrompt(): string {
 FOR THIS MESSAGE ONLY (rotate every time — do NOT default to EggClicker or repeat yesterday):
 - Use this ANGLE: ${angle}
 - If you mention a specific $FRANC game or feature, center it on: ${topic}
+- MANDATORY: whatever the angle, finish on a clever, NATURAL link to $FRANC or the $FRANC universe (a game we built, a Telegram feature, the two-chain setup, the community). Never leave the fact hanging without that smart $FRANC tie-in.
 - Make it feel fresh and different from a typical message.`
 }
 
