@@ -1,12 +1,14 @@
 // ════════════════════════════════════════════════════════════════
 //  daily-fact — messages quotidiens de Francis le coq dans
 //  "The Chicken Coop" (Telegram). Appelée par pg_cron :
-//    • 06h UTC → "☀️ Crypto morning" : brief crypto du matin
+//    • 06h UTC → "☀️ Crypto morning" : brief crypto (source decrypt.co)
 //    • 13h UTC → "Did you know?" sur $FRANC
-//    • 19h UTC → "🌙 Crypto night"   : brief crypto du soir
+//    • 19h UTC → "🌙 Crypto night"   : brief crypto (source journalducoin.com)
 //
-//  Les briefs crypto (morning & night) synthétisent en 300 caractères
-//  max le meilleur des 6 dernières news du flux Decrypt (decrypt.co).
+//  Les briefs crypto synthétisent en 300 caractères max le meilleur des
+//  6 dernières news. Les sources sont VOLONTAIREMENT différentes matin/soir
+//  pour diversifier l'information (decrypt.co en anglais, Journal du Coin
+//  en français — traduit en anglais à la volée).
 //
 //  Sécurité : protégée par un secret partagé (CRON_SECRET) — seul
 //  un appel portant le bon secret déclenche un post.
@@ -20,13 +22,6 @@ ABOUT $FRANC (stay accurate, invent nothing about $FRANC itself):
 - Lives on two chains: Solana and TON (runs right inside Telegram).
 - Holding a tiny bit of $FRANC unlocks all the games.
 
-VARIETY IS KEY — rotate the angle every day so it never feels repetitive. Pick ONE of these styles (vary daily):
-1. A real-world fact about the ORIGIN/HISTORY of a game genre, then link to Francis's version. (e.g. the original Tamagotchi from the 90s → Francis reinvented it as a 2026 version you chat with on Telegram.)
-2. A fun fact about a classic game (Sudoku, Mastermind, word games like Motus, snake, clickers...) → then "Francis brings it to the coop / modernized it".
-3. A rooster / barnyard / nature fact → playful bridge to Francis and the coop.
-4. A general crypto or tech fact → bridge to why $FRANC's two-chain + Telegram approach is cool.
-5. A pure "$FRANC universe" highlight (community, the rooster world, the variety of games).
-
 NUMBERS & DATES:
 - You MAY use dates, figures, or fun stats about REAL-WORLD topics (game history, gaming culture, tech) to make it richer and more credible.
 - BUT never invent numbers about $FRANC itself (no made-up price, supply, holder count, sales, or dates for $FRANC). For $FRANC, stay qualitative.
@@ -38,7 +33,7 @@ HOW TO WRITE IT:
 - Length: 2 to 3 lively sentences, 300 CHARACTERS MAXIMUM (hard limit — be concise). At most ONE rooster emoji (🐓).
 - English only. Start with "Did you know?" (or a tight variant).
 
-GOOD EXAMPLES (match this spirit and VARIETY, don't copy verbatim):
+GOOD EXAMPLES (match this spirit, don't copy verbatim, and DON'T always pick the same game):
 - "Did you know the first Tamagotchi hit pockets back in the 90s and became a worldwide craze? Francis brought the idea into 2026 — now you raise your rooster AND actually chat with him right on Telegram. 🐓"
 - "Did you know Mastermind, the little code-breaking game, has entertained puzzle lovers for decades? Francis added it to the coop so you can crack codes and have fun with the flock."
 - "Did you know roosters greet the sunrise before almost any other farm animal? Fittingly, Francis never sleeps either — there's always a game waiting in the coop. 🐓"
@@ -52,18 +47,85 @@ STRICT RULES:
 
 Output ONLY the message text, nothing else.`
 
-// Brief crypto (matin & soir). Le hook ("☀️ Crypto morning:" ou
-// "🌙 Crypto night:") est injecté selon le créneau.
-function newsPrompt(hook: string): string {
-  return `You are Francis the rooster, mascot of the $FRANC community memecoin. Below are the 6 LATEST crypto news items from Decrypt (decrypt.co), each with a short summary.
+// ── Variété forcée du "Did you know?" ─────────────────────────
+// On tire au sort, CÔTÉ SERVEUR, un angle + un sujet à chaque appel,
+// pour éviter que le modèle retombe toujours sur le même jeu (ex:
+// EggClicker). Le directive est injecté dans le prompt.
+const FACT_ANGLES = [
+  'Take a real-world fact about the ORIGIN/HISTORY of a game genre, then bridge to Francis\'s version.',
+  'Take a fun fact about a classic game (board/word/arcade/puzzle), then "Francis brings it to the coop / modernized it".',
+  'Take a rooster / barnyard / nature fact, then a playful bridge to Francis and the coop.',
+  'Take a general crypto or tech fact, then bridge to why $FRANC\'s two-chain (Solana + TON) + in-Telegram approach is cool.',
+  'Highlight the "$FRANC universe" itself: the community, the rooster world, or the sheer VARIETY of games (not one single game).',
+]
+
+const FACT_TOPICS = [
+  'the Tamagotchi where you raise Francis and chat with him on Telegram',
+  'EggClicker',
+  'FrancRun',
+  'Sudoku in the coop',
+  'Mastermind in the coop',
+  'Motus (the word-guessing game) in the coop',
+  'Ormuz in the coop',
+  'the fact that $FRANC lives on BOTH Solana and TON',
+  'the fact that everything runs right inside Telegram',
+  'the whole variety of mini-games as a collection (do NOT center on a single game)',
+  'the Francis-the-rooster universe and community vibe',
+  'roosters / barnyard / dawn nature facts bridged to Francis',
+]
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function buildFactPrompt(): string {
+  const angle = pick(FACT_ANGLES)
+  const topic = pick(FACT_TOPICS)
+  return DID_YOU_KNOW_PROMPT + `
+
+FOR THIS MESSAGE ONLY (rotate every time — do NOT default to EggClicker or repeat yesterday):
+- Use this ANGLE: ${angle}
+- If you mention a specific $FRANC game or feature, center it on: ${topic}
+- Make it feel fresh and different from a typical message.`
+}
+
+// ── Briefs crypto (matin & soir) ──────────────────────────────
+// Sources dissociées pour diversifier l'info.
+type Slot = 'morning' | 'night'
+
+interface NewsSource {
+  hook: string
+  feed: string
+  name: string
+  // Note de langue injectée dans le prompt (decrypt = EN, JDC = FR).
+  langNote: string
+}
+
+const NEWS_SOURCES: Record<Slot, NewsSource> = {
+  morning: {
+    hook: '☀️ Crypto morning:',
+    feed: 'https://decrypt.co/feed',
+    name: 'Decrypt (decrypt.co)',
+    langNote: 'The headlines/summaries are in English.',
+  },
+  night: {
+    hook: '🌙 Crypto night:',
+    feed: 'https://journalducoin.com/feed/',
+    name: 'Journal du Coin (journalducoin.com)',
+    langNote: 'The headlines/summaries are in FRENCH — translate and explain them in clear, simple English.',
+  },
+}
+
+function newsPrompt(src: NewsSource): string {
+  return `You are Francis the rooster, mascot of the $FRANC community memecoin. Below are the 6 LATEST crypto news items from ${src.name}, each with a short summary. ${src.langNote}
 
 YOUR TASK:
 1. From these 6 items, SYNTHESIZE the best — the most important and interesting for a general crypto audience (big market moves, major regulation, major adoption, big macro/geopolitical events impacting crypto, major hacks, big project news). Lead with the single biggest story; you MAY briefly add a second one if it genuinely matters and still fits the limit.
-2. Summarize and vulgarize it IN ENGLISH so anyone can understand it — clear, simple, no jargon.
+2. Summarize and vulgarize it IN ENGLISH so anyone can understand it — clear, simple, no jargon. (Translate from French if needed.)
 3. Keep it to 300 CHARACTERS MAXIMUM (this is a hard limit — count characters, be concise).
 
 STYLE:
-- Start with exactly this hook: "${hook}" then the news.
+- Start with exactly this hook: "${src.hook}" then the news.
 - Plain, clear English. Friendly and light, with a tiny rooster touch if it fits naturally — but the NEWS and clarity come first, not jokes.
 - At most ONE extra emoji besides the hook.
 
@@ -80,15 +142,6 @@ LATEST HEADLINES:
 `
 }
 
-const NEWS_HOOKS: Record<'morning' | 'night', string> = {
-  morning: '☀️ Crypto morning:',
-  night: '🌙 Crypto night:',
-}
-
-// ── Lecture du flux RSS Decrypt ───────────────────────────────
-// Récupère les 6 articles les PLUS RÉCENTS : titre + résumé.
-const DECRYPT_FEED = 'https://decrypt.co/feed'
-
 function stripHtml(s: string): string {
   return s
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
@@ -103,9 +156,10 @@ function stripHtml(s: string): string {
     .trim()
 }
 
-async function fetchLatestNews(): Promise<{ items: string[]; reason: string }> {
+// Récupère les 6 articles les PLUS RÉCENTS d'un flux RSS : titre + résumé.
+async function fetchLatestNews(feed: string): Promise<{ items: string[]; reason: string }> {
   try {
-    const res = await fetch(DECRYPT_FEED, {
+    const res = await fetch(feed, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
@@ -132,13 +186,14 @@ async function fetchLatestNews(): Promise<{ items: string[]; reason: string }> {
   }
 }
 
-async function generateNews(apiKey: string, slot: 'morning' | 'night'): Promise<{ ok: boolean; text: string; reason: string }> {
-  const feed = await fetchLatestNews()
-  if (feed.items.length === 0) return { ok: false, text: '', reason: feed.reason }
+async function generateNews(apiKey: string, slot: Slot): Promise<{ ok: boolean; text: string; reason: string }> {
+  const src = NEWS_SOURCES[slot]
+  const feed = await fetchLatestNews(src.feed)
+  if (feed.items.length === 0) return { ok: false, text: '', reason: `[${src.name}] ${feed.reason}` }
 
   const model = 'gemini-3.1-flash-lite'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const prompt = newsPrompt(NEWS_HOOKS[slot]) + feed.items.join('\n')
+  const prompt = newsPrompt(src) + feed.items.join('\n')
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -182,10 +237,11 @@ function looksTruncated(text: string): boolean {
 async function generateFact(apiKey: string): Promise<{ ok: boolean; text: string; reason: string }> {
   const model = 'gemini-3.1-flash-lite'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const prompt = DID_YOU_KNOW_PROMPT
+  // Nouveau prompt aléatoire (angle + sujet) à CHAQUE appel.
+  const prompt = buildFactPrompt()
   let lastTry = ''
   let lastReason = 'aucune réponse de Gemini'
-  // On tente jusqu'à 5 fois : si Gemini glisse une vraie stat, on régénère.
+  // On tente jusqu'à 5 fois (en cas de vide / troncature).
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const res = await fetch(url, {
@@ -193,7 +249,7 @@ async function generateFact(apiKey: string): Promise<{ ok: boolean; text: string
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 250, temperature: 1.0 }
+          generationConfig: { maxOutputTokens: 250, temperature: 1.1 }
         })
       })
       if (!res.ok) {
@@ -243,8 +299,8 @@ Deno.serve(async (req: Request) => {
   }
 
   // Type de message :
-  //   "morning" (alias "gm")   → brief "☀️ Crypto morning"
-  //   "night"   (alias "news") → brief "🌙 Crypto night"
+  //   "morning" (alias "gm")   → brief "☀️ Crypto morning" (decrypt.co)
+  //   "night"   (alias "news") → brief "🌙 Crypto night"   (journalducoin.com)
   //   sinon                    → "Did you know?" (fact)
   // dryRun:true → génère et renvoie le texte SANS poster (pour tester).
   let kind: 'fact' | 'morning' | 'night' = 'fact'
@@ -261,7 +317,6 @@ Deno.serve(async (req: Request) => {
     : await generateFact(geminiKey)
   if (!result.ok) {
     console.error(`daily-fact[${kind}]: échec —`, result.reason, '| dernière tentative:', result.text.slice(0, 200))
-    // On renvoie le diagnostic pour pouvoir déboguer via le test SQL.
     return new Response(JSON.stringify({
       status: 'no message',
       kind,
