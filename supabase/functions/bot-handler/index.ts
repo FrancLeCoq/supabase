@@ -411,6 +411,30 @@ Deno.serve(async (req) => {
     const tr = (fr: string, en: string) => isFR ? fr : en
 
     // ══════════════════════════════════════════════════════════
+    //  COCORICO RACING (F1 + MotoGP) — commandes OWNER, à la demande
+    //  /F1essais /GPessais /F1qualifs /GPqualifs /F1sprint /GPsprint
+    //  /F1course /GPcourse /F1we /GPwe /F1news /GPnews
+    //  Délègue à la fonction isolée « racing » (recherche + EN + FR).
+    // ══════════════════════════════════════════════════════════
+    {
+      const RACING_CMDS = ['/f1essais','/gpessais','/f1qualifs','/gpqualifs','/f1sprint','/gpsprint','/f1course','/gpcourse','/f1we','/gpwe','/f1news','/gpnews']
+      if (RACING_CMDS.includes(text)) {
+        if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement
+        const cronSecret = Deno.env.get('CRON_SECRET') || ''
+        const trigger = fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/racing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+          body: JSON.stringify({ command: text.slice(1) }),
+        }).catch((e) => console.error('racing trigger:', String(e)))
+        ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
+        await sendMessage(token, chatId, tr(
+          `🏁 C'est parti — je cherche et je publie dans <b>Cocorico Racing</b>…`,
+          `🏁 On it — searching and posting to <b>Cocorico Racing</b>…`))
+        return new Response('ok')
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  PAUSE / REPRISE de Francis IA dans les groupes
     //  À taper dans le bot en privé (réservé au owner) :
     //   /stopbotpoulailler · /playbotpoulailler
@@ -786,6 +810,7 @@ Deno.serve(async (req) => {
         `💰 <b>Crypto Coop</b> — non-stop crypto news, decoded\n` +
         `📰 <b>World Roost</b> — the world's biggest stories, every day\n` +
         `🔥 <b>Hot Wings</b> — the spiciest must-read headlines\n` +
+        `🏁 <b>Cocorico Racing</b> — F1 & MotoGP highlights, race by race\n` +
         `🎮 <b>Games</b> — play all of Francis' mini-games\n` +
         `🌶️ <b>Backstage (Soon)</b> — the devs' spicy corner, coming soon\n` +
         `🔗 <b>Wallet</b> — connect & unlock the full experience\n\n` +
@@ -810,6 +835,7 @@ Deno.serve(async (req) => {
         `💰 <b>Crypto Cocorico</b> — l'actu crypto en continu, décryptée\n` +
         `📰 <b>Le Chant du Monde</b> — les grandes actus internationales, chaque jour\n` +
         `🔥 <b>Le Poulailler Interdit</b> — l'actu hot à ne pas manquer\n` +
+        `🏁 <b>Cocorico Racing</b> — F1 & MotoGP, les temps forts course après course\n` +
         `🎮 <b>Jeux</b> — des mini-jeux uniques à l'effigie du coq\n` +
         `🔞 <b>Les Plumes Chaudes (bientôt)</b> — le contenu très hot des dev, à venir\n` +
         `🔗 <b>Portefeuille</b> — connecte-toi & débloque tout l'univers\n\n` +
