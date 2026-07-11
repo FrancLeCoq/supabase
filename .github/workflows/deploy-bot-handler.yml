@@ -1,13 +1,23 @@
-# Déploie la fonction bot-handler sur Supabase, depuis le cloud GitHub.
-# Aucun PowerShell/CLI local requis : tout se déclenche depuis le navigateur
-# (onglet Actions -> "Deploy bot-handler" -> bouton "Run workflow").
+# Déploie la fonction bot-handler sur Supabase depuis le cloud GitHub.
+# Aucun PowerShell/CLI local requis. La CLI Supabase compile le code
+# depuis le disque = déploiement fiable (pas de recopie manuelle).
 #
-# Prérequis (une seule fois) : ajouter le secret SUPABASE_ACCESS_TOKEN
-# dans Settings -> Secrets and variables -> Actions.
+# Prérequis (une seule fois, dans le navigateur) :
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#   Nom : SUPABASE_ACCESS_TOKEN
+#   Valeur : un token créé sur https://supabase.com/dashboard/account/tokens
+#
+# Déclenchement : à chaque push sur la branche de travail (Claude relance
+# le déploiement d'un simple push), ou via le bouton "Run workflow".
 name: Deploy bot-handler
 
 on:
-  workflow_dispatch:   # bouton manuel "Run workflow" dans l'onglet Actions
+  push:
+    branches: [claude/focused-hopper-9pj646]
+    paths:
+      - 'supabase/functions/bot-handler/**'
+      - '.github/workflows/deploy-bot-handler.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -21,7 +31,7 @@ jobs:
         with:
           version: latest
 
-      - name: Déployer bot-handler (compile depuis le disque = fiable)
+      - name: Déployer bot-handler
         run: supabase functions deploy bot-handler --project-ref mubqtnqulpyehkgubhnh --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
