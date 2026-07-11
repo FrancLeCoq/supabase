@@ -82,13 +82,14 @@ async function formatCall(prompt: string): Promise<string> {
 // -- Config des commandes --------------------------------------
 // type de rubrique -> prompt de recherche (EN) + consigne de mise en
 // forme + hooks EN/FR. {S} = 'F1' ou 'MotoGP', {SPORT} = nom long.
-type RType = 'essais' | 'qualifs' | 'sprint' | 'course' | 'we' | 'news'
+type RType = 'essais' | 'qualifs' | 'qualifssprint' | 'sprint' | 'course' | 'we' | 'news'
 
 function searchPrompt(sportLong: string, type: RType): string {
   const base = 'Use Google Search to find accurate, up-to-date facts. Report ONLY verified facts, in English, as raw notes (no styling). If you genuinely cannot find the information, reply with exactly: NONE.' + NL + NL
   const q: Record<RType, string> = {
     essais: 'Find the results and highlights of the most recent ' + sportLong + ' FREE PRACTICE sessions of the current or upcoming race weekend (usually held on Friday). Who was fastest, notable lap times, incidents, surprises, weather.',
-    qualifs: 'Find the QUALIFYING results of the most recent ' + sportLong + ' race weekend (usually Saturday). Give the FULL qualifying classification in order (P1, P2, ... with driver/rider name + team, and pole time or gaps), plus key highlights (surprises, crashes, penalties).',
+    qualifs: 'Find the QUALIFYING results that set the grid for the MAIN Grand Prix (the standard qualifying, usually Saturday) of the most recent ' + sportLong + ' race weekend. Give the FULL qualifying classification in order (position, driver/rider name + team, and pole time or gaps), plus key highlights (surprises, crashes, penalties). Do NOT report the sprint qualifying/shootout here.',
+    qualifssprint: 'Find the SPRINT QUALIFYING results (the session that sets the grid for the SPRINT race - in F1 called Sprint Shootout / Sprint Qualifying) of the most recent ' + sportLong + ' sprint race weekend. Give the FULL classification in order (position, driver/rider name + team, and time or gaps), plus key highlights. If this race weekend has NO sprint format, reply with exactly: NONE.',
     sprint: 'Find the results of the most recent ' + sportLong + ' SPRINT race. Give the winner, the podium, and the finishing order (top positions with name + team), plus key highlights and incidents.',
     course: 'Find the results of the most recent ' + sportLong + ' main RACE (Grand Prix). Give the winner, the podium, and the finishing order (top positions with name + team), plus key highlights and incidents.',
     we: 'Find the NEXT upcoming ' + sportLong + ' race weekend: the Grand Prix name and circuit/location (city, country), and the FULL session schedule for each day (practice, qualifying, sprint if any, race) with their start times. Convert and give ALL times in UTC.',
@@ -100,10 +101,11 @@ function searchPrompt(sportLong: string, type: RType): string {
 function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RType, facts: string): string {
   const task: Record<RType, string> = {
     essais: 'Write a punchy summary of the PRACTICE highlights. HARD LIMIT: 280 characters. Lead with the standout fact (fastest driver/rider + key moment). No standings.',
-    qualifs: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took pole; then a blank line; then (2) the FULL qualifying classification, ONE line per position formatted like "P1 Name (Team) - time/gap".',
-    sprint: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position "P1 Name (Team)".',
-    course: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the race highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position "P1 Name (Team)".',
-    we: 'Write the upcoming ' + sportShort + ' race weekend. First line: the Grand Prix name + circuit + location. Then the schedule, ONE line per session formatted "Day HH:MM UTC - Session". Keep ALL times in UTC and make it clear this is ' + sportShort + '.',
+    qualifs: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took pole; then a blank line; then (2) the FULL qualifying classification, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team) - time/gap", then "2️⃣ ...", "3️⃣ ...". Use 🔟 for tenth; for positions above ten combine digit emojis (e.g. 1️⃣1️⃣, 1️⃣2️⃣). Never write "P1"/"P2".',
+    qualifssprint: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took sprint pole; then a blank line; then (2) the FULL sprint qualifying classification, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team) - time/gap", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
+    sprint: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team)", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
+    course: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the race highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team)", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
+    we: 'Write the upcoming ' + sportShort + ' race weekend. First line: the Grand Prix name + circuit + location. Then the schedule, ONE line per session, each line STARTING with "👉 " then formatted "👉 Day HH:MM UTC - Session". Keep ALL times in UTC and make it clear this is ' + sportShort + '.',
     news: 'Write the freshest paddock news as 2 to 4 short punchy bullet points (start each with -). Keep it factual. Max ~500 characters.',
   }
   return [
@@ -126,12 +128,12 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
 }
 
 const HOOK_EN: Record<RType, string> = {
-  essais: 'Practice highlights', qualifs: 'Qualifying', sprint: 'Sprint race',
-  course: 'Race', we: 'Next race weekend', news: 'Paddock buzz',
+  essais: 'Practice highlights', qualifs: 'Qualifying', qualifssprint: 'Sprint Qualifying',
+  sprint: 'Sprint race', course: 'Race', we: 'Next race weekend', news: 'Paddock buzz',
 }
 const HOOK_FR: Record<RType, string> = {
-  essais: 'Essais : temps forts', qualifs: 'Qualifications', sprint: 'Course Sprint',
-  course: 'Course', we: 'Prochain week-end', news: 'Potins du paddock',
+  essais: 'Essais : temps forts', qualifs: 'Qualifications', qualifssprint: 'Qualifs Sprint',
+  sprint: 'Course Sprint', course: 'Course', we: 'Prochain week-end', news: 'Potins du paddock',
 }
 
 // -- Telegram --------------------------------------------------
@@ -156,6 +158,7 @@ async function runCommand(token: string, command: string): Promise<void> {
   const isF1 = command.startsWith('f1')
   const sportShort = isF1 ? 'F1' : 'MotoGP'
   const sportLong = isF1 ? 'Formula 1' : 'MotoGP'
+  const sportEmoji = isF1 ? '🏎️' : '🏍️'   // petite F1 / petite moto en tete du titre
   const type = command.replace('f1', '').replace('gp', '') as RType
 
   const facts = await groundedSearch(searchPrompt(sportLong, type))
@@ -167,13 +170,13 @@ async function runCommand(token: string, command: string): Promise<void> {
   // EN -> The Chicken Coop (1631)
   const en = await formatCall(formatPrompt('English', sportShort, type, facts))
   if (en && en.toUpperCase().indexOf('NONE') !== 0) {
-    await post(token, COOP_CHAT_ID, '🏁 ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en, RACING_THREAD_EN)
+    await post(token, COOP_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en, RACING_THREAD_EN)
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
   // FR -> Le Poulailler (147)
   const fr = await formatCall(formatPrompt('French', sportShort, type, facts))
   if (fr && fr.toUpperCase().indexOf('NONE') !== 0) {
-    await post(token, FR_CHAT_ID, '🏁 ' + sportShort + ' — ' + HOOK_FR[type] + NL + NL + fr, RACING_THREAD_FR)
+    await post(token, FR_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + NL + NL + fr, RACING_THREAD_FR)
   } else { console.error('racing[' + command + '] FR vide/NONE') }
 
   if ((!en || en.toUpperCase().indexOf('NONE') === 0) && (!fr || fr.toUpperCase().indexOf('NONE') === 0)) {
@@ -183,8 +186,10 @@ async function runCommand(token: string, command: string): Promise<void> {
 
 // -- Point d'entree --------------------------------------------
 const VALID = new Set([
-  'f1essais', 'gpessais', 'f1qualifs', 'gpqualifs', 'f1sprint', 'gpsprint',
-  'f1course', 'gpcourse', 'f1we', 'gpwe', 'f1news', 'gpnews',
+  'f1essais', 'gpessais',
+  'f1qualifs', 'gpqualifs', 'f1qualifssprint', 'gpqualifssprint',
+  'f1sprint', 'gpsprint', 'f1course', 'gpcourse',
+  'f1we', 'gpwe', 'f1news', 'gpnews',
 ])
 
 Deno.serve(async (req: Request) => {

@@ -417,7 +417,7 @@ Deno.serve(async (req) => {
     //  Délègue à la fonction isolée « racing » (recherche + EN + FR).
     // ══════════════════════════════════════════════════════════
     {
-      const RACING_CMDS = ['/f1essais','/gpessais','/f1qualifs','/gpqualifs','/f1sprint','/gpsprint','/f1course','/gpcourse','/f1we','/gpwe','/f1news','/gpnews']
+      const RACING_CMDS = ['/f1essais','/gpessais','/f1qualifs','/gpqualifs','/f1qualifssprint','/gpqualifssprint','/f1sprint','/gpsprint','/f1course','/gpcourse','/f1we','/gpwe','/f1news','/gpnews']
       if (RACING_CMDS.includes(text)) {
         if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement
         const cronSecret = Deno.env.get('CRON_SECRET') || ''
