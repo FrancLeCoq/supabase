@@ -48,6 +48,7 @@ const GROUPS: Group[] = [
     title: '🌶️ Hot',
     items: [
       ['hot-morning', '08:00 Hot matin'],
+      ['hot-midday', '15:00 Hot midi'],
       ['hot-evening', '20:00 Hot soir'],
     ],
   },
@@ -87,7 +88,9 @@ function buildReport(day: string, crons: string[]): string {
   const lines: string[] = ['📊 Rapport Francis - ' + day, '']
   for (const g of GROUPS) {
     lines.push(g.title)
-    for (const [job, label] of g.items) {
+    // Tri chronologique par l'heure en tête de label ("HH:MM ...") pour la lisibilité.
+    const items = g.items.slice().sort((a, b) => a[1].slice(0, 5).localeCompare(b[1].slice(0, 5)))
+    for (const [job, label] of items) {
       total++
       const ok = has(job)
       if (ok) okCount++
