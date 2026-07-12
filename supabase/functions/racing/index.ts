@@ -92,20 +92,30 @@ function searchPrompt(sportLong: string, type: RType): string {
     qualifssprint: 'Find the SPRINT QUALIFYING results (the session that sets the grid for the SPRINT race - in F1 called Sprint Shootout / Sprint Qualifying) of the most recent ' + sportLong + ' sprint race weekend. Give the FULL classification in order (position, driver/rider name + team, and time or gaps), plus key highlights. If this race weekend has NO sprint format, reply with exactly: NONE.',
     sprint: 'Find the results of the most recent ' + sportLong + ' SPRINT race. Give the winner, the podium, and the finishing order (top positions with name + team), plus key highlights and incidents.',
     course: 'Find the results of the most recent ' + sportLong + ' main RACE (Grand Prix). Give the winner, the podium, and the finishing order (top positions with name + team), plus key highlights and incidents.',
-    we: 'Find the NEXT upcoming ' + sportLong + ' race weekend: the Grand Prix name and circuit/location (city, country), and the FULL session schedule for each day (practice, qualifying, sprint if any, race) with their start times. Convert and give ALL times in UTC.',
+    we: 'TWO things about ' + sportLong + '. (1) The NEXT upcoming race weekend: the Grand Prix name and circuit/location (city, country), and the FULL session schedule for each day (practice, qualifying, sprint if any, race) with their start times, converted to UTC. (2) The CURRENT ' + sportLong + ' World Drivers/Riders Championship standings AS OF TODAY: the FULL classification IN ORDER with, for EACH entry, the position, the driver/rider FULL name (first + last), their team/constructor NAME, and their points total. Label this section STANDINGS and keep every position.',
     news: 'Find the freshest ' + sportLong + ' paddock news, rumours and gossip from the LAST 48 HOURS (driver/rider moves, contracts, team news, controversies, injuries). Juicy but factual.',
   }
   return base + q[type]
 }
 
 function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RType, facts: string): string {
+  // Ordre du classement selon le sport. NB: Telegram n'affiche pas de vraies
+  // images dans un message texte -> le "logo ecurie" (F1) = le NOM de l'ecurie.
+  const standingsFmt = (sportShort === 'F1')
+    ? '<rank emoji> <Team> - <First Last> - <points> pts'
+    : '<rank emoji> <First Last> - <Team> - <points> pts'
   const task: Record<RType, string> = {
     essais: 'Write a punchy summary of the PRACTICE highlights. HARD LIMIT: 280 characters. Lead with the standout fact (fastest driver/rider + key moment). No standings.',
     qualifs: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took pole; then a blank line; then (2) the FULL qualifying classification, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team) - time/gap", then "2️⃣ ...", "3️⃣ ...". Use 🔟 for tenth; for positions above ten combine digit emojis (e.g. 1️⃣1️⃣, 1️⃣2️⃣). Never write "P1"/"P2".',
     qualifssprint: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took sprint pole; then a blank line; then (2) the FULL sprint qualifying classification, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team) - time/gap", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
     sprint: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team)", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
     course: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the race highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team)", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
-    we: 'Write the upcoming ' + sportShort + ' race weekend. First line: the Grand Prix name + circuit + location. Then the schedule, ONE line per session, each line STARTING with "👉 " then formatted "👉 Day HH:MM UTC - Session". Keep ALL times in UTC and make it clear this is ' + sportShort + '.',
+    we: 'Write the upcoming ' + sportShort + ' race weekend, THEN the current world standings. STRUCTURE: '
+      + '(1) First line: the Grand Prix name + circuit + location. '
+      + '(2) The schedule, ONE line per session, each line STARTING with "👉 " then formatted "👉 Day HH:MM UTC - Session" (all times UTC). '
+      + '(3) A blank line, then a header line exactly "🏆 World Championship". '
+      + '(4) Then the FULL current standings from the facts, ONE line per driver/rider IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣, 1️⃣2️⃣), formatted EXACTLY like this: "' + standingsFmt + '". '
+      + 'Keep the exact order, names, teams and points from the facts. Make it clear this is ' + sportShort + '. NO 280-character limit here.',
     news: 'Write the freshest paddock news as 2 to 4 short punchy bullet points (start each with -). Keep it factual. Max ~500 characters.',
   }
   return [
