@@ -5,9 +5,10 @@
 //  envoie en DM (chat 6593812300) l'etat d'envoi des messages automatises,
 //  en 3 tableaux : Crypto, World, Hot.
 //
-//  Source : RPC public.automation_report_today() qui lit l'historique
-//  cron (cron.job_run_details) + le journal daily_news_log du jour.
-//  Un message est marque OK si son cron s'est declenche avec succes.
+//  Source : RPC public.automation_report_today() qui lit la table
+//  public.automation_sent : une ligne y est ecrite par chaque fonction
+//  UNIQUEMENT apres une publication Telegram reussie. Un message est
+//  marque OK (✅) s'il a ete REELLEMENT envoye aujourd hui.
 //
 //  Declenchement (pg_cron) : 21:00 ET 22:00 UTC. La fonction n'envoie
 //  QUE si l'heure de Paris est 23 -> exactement un envoi/jour toute
@@ -19,29 +20,38 @@
 const NL = String.fromCharCode(10)
 const REPORT_CHAT_ID = 6593812300
 
+// Libelles = heure de PARIS (figee toute l'annee). Le tri se fait sur ces 5
+// premiers caracteres "HH:MM". Les cles = job_key ecrits dans automation_sent.
 interface Group { title: string; items: [string, string][] }
 const GROUPS: Group[] = [
+  {
+    title: '🐓 General',
+    items: [
+      ['franc-gm-joke', '07:30 GM + blague'],
+      ['franc-did-you-know-1', '08:30 Did you know?'],
+      ['franc-gn', '20:15 GN'],
+    ],
+  },
   {
     title: '🪙 Crypto',
     items: [
       ['franc-gm', '05:00 Morning'],
+      ['daily-fact-pump-morning', '08:35 Pump'],
       ['franc-crypto-midi', '12:00 Midday'],
-      ['franc-news', '19:00 Evening'],
-      ['franc-crypto-night', '20:30 Night'],
-      ['daily-fact-pump-morning', '08:30 Pump'],
       ['daily-fact-pump', '15:30 Pump'],
-      ['franc-did-you-know-1', '08:30 Did you know?'],
+      ['franc-news', '19:00 Evening'],
+      ['franc-crypto-night', '20:10 Night'],
     ],
   },
   {
     title: '🌍 World',
     items: [
-      ['world-morning', '05:10 Réveil Info'],
-      ['world-eco', '08:40 Cocorico Éco'],
-      ['world-midday', '12:10 Actu Midi'],
-      ['world-tech', '15:40 Cocorico Tech'],
-      ['world-evening', '19:10 Grand Brief'],
-      ['world-night', '20:40 Bilan du Soir'],
+      ['world-morning', '06:30 Réveil Info'],
+      ['world-eco', '10:00 Cocorico Éco'],
+      ['world-midday', '13:30 Actu Midi'],
+      ['world-tech', '17:00 Cocorico Tech'],
+      ['world-evening', '19:30 Grand Brief'],
+      ['world-night', '20:05 Bilan du Soir'],
     ],
   },
   {
@@ -98,8 +108,8 @@ function buildReport(day: string, crons: string[]): string {
     }
     lines.push('')
   }
-  lines.push(okCount + '/' + total + ' messages declenches')
-  if (okCount < total) lines.push('(❌ = cron non declenche aujourd hui - a verifier)')
+  lines.push(okCount + '/' + total + ' messages envoyes')
+  if (okCount < total) lines.push('(❌ = message NON envoye aujourd hui - a verifier)')
   return lines.join(NL)
 }
 

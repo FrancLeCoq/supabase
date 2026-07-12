@@ -304,6 +304,22 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
   }
 }
 
+// Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
+async function markSent(jobKey: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    await tfetch(url + '/rest/v1/automation_sent', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ day: today, job_key: jobKey }),
+    })
+  } catch { /* best-effort */ }
+}
+const KIND_JOB: Record<string, string> = { wr_morning: 'world-morning', wr_eco: 'world-eco', wr_midday: 'world-midday', wr_tech: 'world-tech', wr_evening: 'world-evening', wr_night: 'world-night' }
+
 // -- Point d'entree --------------------------------------------
 Deno.serve(async (req: Request) => {
   const secret = Deno.env.get('CRON_SECRET')
@@ -345,6 +361,7 @@ Deno.serve(async (req: Request) => {
       const enBody = await translateToEnglish(frBody)
       if (enBody) await sendWithBanner(botToken, chatId, imgUrl, hookEn + NL + NL + enBody, WORLD_THREAD_EN)
       else console.error('daily-world[' + kind + ']: traduction EN vide')
+      await markSent(KIND_JOB[kind] || ('world-' + kind))
       console.log('daily-world[' + kind + '] poste:', result.frText.slice(0, 80))
     } catch (e) { console.error('daily-world[' + kind + '] bg exception:', String(e)) }
   })()

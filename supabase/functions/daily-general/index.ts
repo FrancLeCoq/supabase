@@ -86,6 +86,21 @@ async function postToGroup(token: string, chatId: number, text: string): Promise
   } catch (e) { console.error('daily-general postToGroup exception', String(e)) }
 }
 
+// Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
+async function markSent(jobKey: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    await tfetch(url + '/rest/v1/automation_sent', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ day: today, job_key: jobKey }),
+    })
+  } catch { /* best-effort */ }
+}
+
 // -- Point d'entree --------------------------------------------
 Deno.serve(async (req: Request) => {
   const secret = Deno.env.get('CRON_SECRET')
@@ -123,6 +138,7 @@ Deno.serve(async (req: Request) => {
       const fr = await generate(promptFor('French'))
       if (fr) await postToGroup(botToken, FR_CHAT_ID, fr)
       else console.error('daily-general[' + kind + '] FR vide')
+      await markSent(kind === 'gn' ? 'franc-gn' : 'franc-gm-joke')
       console.log('daily-general[' + kind + '] poste')
     } catch (e) { console.error('daily-general[' + kind + '] bg exception', String(e)) }
   })()

@@ -167,6 +167,21 @@ async function logDailyTopic(summary: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+// Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
+async function markSent(jobKey: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    await tfetch(url + '/rest/v1/automation_sent', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ day: today, job_key: jobKey }),
+    })
+  } catch { /* best-effort */ }
+}
+
 function splitAccroche(s: string): string {
   const t = s.trim()
   if (t.indexOf(NL) >= 0) return t
@@ -262,7 +277,8 @@ Deno.serve(async (req: Request) => {
   if (!geminiKey || !botToken) return new Response('missing config', { status: 500 })
 
   let dryRun = false
-  try { const body = await req.json(); if (body && body.dryRun === true) dryRun = true } catch { /* ok */ }
+  let slot = 'hot-evening'   // le cron passe {"slot":"hot-morning|hot-midday|hot-evening"}
+  try { const body = await req.json(); if (body && body.dryRun === true) dryRun = true; if (body && typeof body.slot === 'string') slot = body.slot } catch { /* ok */ }
 
   if (dryRun) {
     const r = await generateHot()
@@ -287,6 +303,7 @@ Deno.serve(async (req: Request) => {
         if (img) { const okFr = await postPhotoToGroup(botToken, FR_CHAT_ID, img, frText, FR_THREAD_HOT); if (!okFr) await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT) }
         else await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT)
       } else console.error('daily-hot: traduction FR vide')
+      await markSent(slot)
       console.log('daily-hot poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-hot bg exception:', String(e)) }
   })()

@@ -288,6 +288,21 @@ async function sendWithBanner(token: string, chatId: number, text: string, threa
   if (!ok) await postToGroup(token, chatId, text, threadId)
 }
 
+// Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
+async function markSent(jobKey: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    await tfetch(url + '/rest/v1/automation_sent', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ day: today, job_key: jobKey }),
+    })
+  } catch { /* best-effort */ }
+}
+
 // -- Point d'entree --------------------------------------------
 Deno.serve(async (req: Request) => {
   const secret = Deno.env.get('CRON_SECRET')
@@ -298,7 +313,8 @@ Deno.serve(async (req: Request) => {
   if (!geminiKey || !botToken) return new Response('missing config', { status: 500 })
 
   let dryRun = false
-  try { const body = await req.json(); if (body && body.dryRun === true) dryRun = true } catch { /* ok */ }
+  let slot = 'daily-fact-pump'   // le cron passe {"slot":"daily-fact-pump-morning|daily-fact-pump"}
+  try { const body = await req.json(); if (body && body.dryRun === true) dryRun = true; if (body && typeof body.slot === 'string') slot = body.slot } catch { /* ok */ }
 
   if (dryRun) {
     const r = await generatePump()
@@ -314,6 +330,7 @@ Deno.serve(async (req: Request) => {
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr, FR_THREAD_CRYPTO)   // FR -> Crypto Cocorico
       else console.error('daily-pump: traduction FR vide')
+      await markSent(slot)
       console.log('daily-pump poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-pump bg exception:', String(e)) }
   })()

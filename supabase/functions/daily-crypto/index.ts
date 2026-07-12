@@ -143,6 +143,22 @@ async function logDailyTopic(slot: string, summary: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+// Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
+async function markSent(jobKey: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    await tfetch(url + '/rest/v1/automation_sent', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ day: today, job_key: jobKey }),
+    })
+  } catch { /* best-effort */ }
+}
+const KIND_JOB: Record<string, string> = { morning: 'franc-gm', midday: 'franc-crypto-midi', evening: 'franc-news', night: 'franc-crypto-night' }
+
 // -- Indice Fear & Greed (alternative.me) ----------------------
 async function fetchFearGreed(): Promise<string> {
   try {
@@ -360,6 +376,7 @@ Deno.serve(async (req: Request) => {
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, imgUrl, fr, FR_THREAD_CRYPTO)
       else console.error('daily-crypto[' + kind + ']: traduction FR vide')
+      await markSent(KIND_JOB[kind] || ('crypto-' + kind))
       console.log('daily-crypto[' + kind + '] posté:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-crypto[' + kind + '] bg exception:', String(e)) }
   })()
