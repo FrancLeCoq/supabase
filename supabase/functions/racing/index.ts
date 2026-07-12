@@ -99,11 +99,9 @@ function searchPrompt(sportLong: string, type: RType): string {
 }
 
 function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RType, facts: string): string {
-  // Ordre du classement selon le sport. NB: Telegram n'affiche pas de vraies
-  // images dans un message texte -> le "logo ecurie" (F1) = le NOM de l'ecurie.
-  const standingsFmt = (sportShort === 'F1')
-    ? '<rank emoji> <Team> - <First Last> - <points> pts'
-    : '<rank emoji> <First Last> - <Team> - <points> pts'
+  // Meme modele de classement pour F1 et MotoGP : pilote - ecurie - points.
+  // (Telegram n'affiche pas de vrais logos dans un message texte.)
+  const standingsFmt = '<rank emoji> <First Last> - <Team> - <points> pts'
   const task: Record<RType, string> = {
     essais: 'Write a punchy summary of the PRACTICE highlights. HARD LIMIT: 280 characters. Lead with the standout fact (fastest driver/rider + key moment). No standings.',
     qualifs: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took pole; then a blank line; then (2) the FULL qualifying classification, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team) - time/gap", then "2️⃣ ...", "3️⃣ ...". Use 🔟 for tenth; for positions above ten combine digit emojis (e.g. 1️⃣1️⃣, 1️⃣2️⃣). Never write "P1"/"P2".',
