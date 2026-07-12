@@ -1,0 +1,13 @@
+-- Nouvelle repartition etalee (~55 min) en heure de PARIS figee, pour
+-- desengorger la soiree. Gel Paris conserve (garde-fou + double heure UTC).
+-- Applique via cron.schedule le 2026-07-12. Source de verite = cron.job.
+--
+-- Grille finale (heure de Paris) :
+--   07:00 world-morning | 07:55 franc-gm | 08:50 franc-gm-joke
+--   09:45 pump-morning  | 10:40 world-eco | 11:35 hot-morning
+--   12:30 crypto-midi   | 13:25 world-midday | 14:20 did-you-know
+--   15:15 hot-midday    | 16:10 world-tech | 17:05 pump-afternoon
+--   18:00 world-evening (Le Monde ce Soir) | 18:55 franc-news
+--   19:50 hot-evening   | 20:45 crypto-night | 21:40 world-night (Actu du Jour en Bref)
+--   22:30 franc-gn      | 22:40 daily-report (rapport prive)
+-- (inchanges : notify-francis-pets /2h, daily-holders-recheck 12:10)

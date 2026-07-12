@@ -185,7 +185,7 @@ function splitAccroche(s: string): string {
 // == ACTU CRYPTO (morning / midday / evening) ==================
 function searchPromptNews(coveredToday: string[]): string {
   const dedup = coveredToday.length
-    ? NL + 'ALREADY COVERED EARLIER TODAY (pick a genuinely DIFFERENT story, not these):' + NL + coveredToday.map((s) => '- ' + s).join(NL) + NL
+    ? NL + 'ALREADY COVERED EARLIER TODAY (below). Pick a genuinely DIFFERENT SUBJECT: NOT the same event/company/institution from another angle, NOT a follow-up on these. For example, if an SEC/regulation story was already covered today, do NOT report more SEC/regulation news — choose a different subject entirely.' + NL + coveredToday.map((s) => '- ' + s).join(NL) + NL
     : ''
   return [
     'You are a crypto news researcher for the $FRANC community.',

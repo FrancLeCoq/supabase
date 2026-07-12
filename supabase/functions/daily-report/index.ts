@@ -25,41 +25,41 @@ const REPORT_CHAT_ID = 6593812300
 interface Group { title: string; items: [string, string][] }
 const GROUPS: Group[] = [
   {
-    title: '🐓 General',
+    title: '🌍 World',
     items: [
-      ['franc-gm-joke', '07:30 GM + blague'],
-      ['franc-did-you-know-1', '08:30 Did you know?'],
-      ['franc-gn', '20:15 GN'],
+      ['world-morning', '07:00 Réveil Info'],
+      ['world-eco', '10:40 Cocorico Éco'],
+      ['world-midday', '13:25 Actu Midi'],
+      ['world-tech', '16:10 Cocorico Tech'],
+      ['world-evening', '18:00 Le Monde ce Soir'],
+      ['world-night', "21:40 L'actu du Jour en Bref"],
     ],
   },
   {
     title: '🪙 Crypto',
     items: [
-      ['franc-gm', '06:30 Morning'],
-      ['daily-fact-pump-morning', '10:00 Pump'],
-      ['franc-crypto-midi', '13:30 Midday'],
-      ['daily-fact-pump', '17:00 Pump'],
-      ['franc-news', '19:30 Evening'],
-      ['franc-crypto-night', '20:05 Night'],
-    ],
-  },
-  {
-    title: '🌍 World',
-    items: [
-      ['world-morning', '05:00 Réveil Info'],
-      ['world-eco', '08:35 Cocorico Éco'],
-      ['world-midday', '12:00 Actu Midi'],
-      ['world-tech', '15:30 Cocorico Tech'],
-      ['world-evening', '19:00 Grand Brief'],
-      ['world-night', '20:10 Bilan du Soir'],
+      ['franc-gm', '07:55 Morning'],
+      ['daily-fact-pump-morning', '09:45 Pump'],
+      ['franc-crypto-midi', '12:30 Midday'],
+      ['daily-fact-pump', '17:05 Pump'],
+      ['franc-news', '18:55 Evening'],
+      ['franc-crypto-night', '20:45 Night'],
     ],
   },
   {
     title: '🌶️ Hot',
     items: [
-      ['hot-morning', '08:00 Hot matin'],
-      ['hot-midday', '15:00 Hot midi'],
-      ['hot-evening', '20:00 Hot soir'],
+      ['hot-morning', '11:35 Hot matin'],
+      ['hot-midday', '15:15 Hot midi'],
+      ['hot-evening', '19:50 Hot soir'],
+    ],
+  },
+  {
+    title: '🐓 General',
+    items: [
+      ['franc-gm-joke', '08:50 GM + blague'],
+      ['franc-did-you-know-1', '14:20 Did you know?'],
+      ['franc-gn', '22:30 GN'],
     ],
   },
 ]

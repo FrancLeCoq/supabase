@@ -196,7 +196,7 @@ async function generateHot(): Promise<{ ok: boolean; text: string; image: string
   if (items.length === 0) return { ok: false, text: '', image: '', reason: '[XBIZ] ' + reason }
   const covered = await fetchTodayHot()
   const dedup = covered.length
-    ? NL + "ALREADY COVERED TODAY (pick a DIFFERENT one, not these):" + NL + covered.map((s) => '- ' + s).join(NL) + NL
+    ? NL + "ALREADY COVERED TODAY (below). Pick a genuinely DIFFERENT story: a DIFFERENT performer/studio/subject, NOT the same news from another angle or a follow-up on these." + NL + covered.map((s) => '- ' + s).join(NL) + NL
     : ''
   const list = items.map((it, i) => (i + 1) + '. ' + it.title + (it.descr ? ' - ' + it.descr : '')).join(NL)
   const prompt = [

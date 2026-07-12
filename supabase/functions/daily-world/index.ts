@@ -15,8 +15,8 @@
 //    * wr_eco      Cocorico Eco              (economie mondiale 24h)
 //    * wr_midday   Actu Midi du Coq          (Europe / France 24h)
 //    * wr_tech     Cocorico Tech Info        (IA / espace / tech 24h)
-//    * wr_evening  Grand Brief International  (actu internationale 12h)
-//    * wr_night    Bilan Info du Soir        (recap du jour, sans recherche)
+//    * wr_evening  Le Monde ce Soir          (actu internationale 12h)
+//    * wr_night    L'actu du Jour en Bref    (recap + vigilance + a surveiller)
 //
 //  Diffusion : FR d'abord -> "Le Poulailler" Actu generale (45),
 //  puis traduction EN -> "The Chicken Coop" World Roost (1489).
@@ -45,8 +45,8 @@ const KIND_IMAGE: Record<string, string> = {
   wr_eco: 'Cocorico Eco.png',
   wr_midday: 'Actu midi du coq.png',
   wr_tech: 'Cocorico Tech Info.png',
-  wr_evening: 'Grand Brief international.png',
-  wr_night: 'Bilan info du soir.png',
+  wr_evening: 'Le Monde Ce Soir.png',
+  wr_night: 'Actu du jour en bref.png',
 }
 function imageUrlFor(kind: string): string {
   const f = KIND_IMAGE[kind]
@@ -79,14 +79,14 @@ const WORLD: Record<WSlot, WDef> = {
     directive: "Recherche la principale actualité des 24 dernières heures concernant l'IA, l'ESPACE ou les NOUVELLES TECHNOLOGIES.",
   },
   wr_evening: {
-    hookFr: '🌆 Grand Brief International :',
-    hookEn: '🌆 Global Rooster Brief:',
+    hookFr: '🌍 Le Monde ce Soir :',
+    hookEn: '🌍 The World Tonight:',
     directive: "Recherche l'actualité INTERNATIONALE majeure des 12 dernières heures. Sélectionne UNIQUEMENT l'événement ayant le plus fort impact potentiel mondial.",
   },
 }
-const NIGHT_HOOK_FR = '🌙 Bilan Info du Soir :'
-const NIGHT_HOOK_EN = '🌙 Night News Recap:'
-const NIGHT_INTRO_FR = "L'essentiel de l'actu du jour, résumé 👇"
+// "L'actu du Jour en Bref" (ex-"Bilan Info du Soir") : le hook EST la 1re ligne du message.
+const NIGHT_HOOK_FR = "🌙 L'essentiel de l'actu du Jour en Bref, résumé 👇 :"
+const NIGHT_HOOK_EN = "🌙 The Day in Review — today's essentials 👇:"
 
 // -- Reseau ----------------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -179,7 +179,7 @@ function splitAccroche(s: string): string {
 // == RUBRIQUES (wr_morning..wr_evening) ========================
 function searchPromptWorld(def: WDef, covered: string[]): string {
   const dedup = covered.length
-    ? NL + "DEJA COUVERT AUJOURD'HUI (choisis une actu VRAIMENT DIFFERENTE, pas celles-ci) :" + NL + covered.map((s) => '- ' + s).join(NL) + NL
+    ? NL + "DEJA COUVERT AUJOURD'HUI (ci-dessous). Choisis un SUJET VRAIMENT DIFFERENT : PAS le meme evenement/pays/dossier sous un autre angle, PAS une simple evolution de ces sujets. Change de sujet." + NL + covered.map((s) => '- ' + s).join(NL) + NL
     : ''
   return [
     "Tu es un chercheur d'actualité pour une chaîne Telegram grand public FRANCOPHONE.",
@@ -239,13 +239,18 @@ function formatPromptNight(topics: string[]): string {
     '👉 <résumé en UNE phrase du sujet 2>',
     '👉 <résumé en UNE phrase du sujet 3>',
     '',
+    '🌍 Point de vigilance : <UNE phrase sur le principal risque / la tension à garder à l’œil qui ressort des sujets du jour>',
+    '',
+    '👀 À surveiller demain : <UNE phrase sur ce qui pourrait se passer demain à partir des sujets du jour>',
+    '',
     'RÈGLES :',
     '- UNE puce 👉 PAR sujet ci-dessus, dans le MÊME ordre. Moins de sujets = moins de puces.',
     '- Si un sujet concerne un pays précis (surtout la France), PRÉCISE le pays.',
-    '- 500 CARACTÈRES MAXIMUM au total. Une seule phrase courte par ligne.',
-    "- Base-toi UNIQUEMENT sur les sujets ci-dessus. N'invente JAMAIS. Garde le marqueur 👉 exactement. Aucun titre.",
+    "- Les lignes « 🌍 Point de vigilance » et « 👀 À surveiller demain » sont OPTIONNELLES : ne les mets QUE si elles découlent logiquement des sujets du jour et apportent une info cohérente. Si tu n'as rien de pertinent ou de cohérent, OMETS entièrement la ligne concernée (ne l'écris pas du tout, n'invente rien).",
+    '- 700 CARACTÈRES MAXIMUM au total. Une seule phrase courte par ligne.',
+    "- Base-toi UNIQUEMENT sur les sujets ci-dessus. N'invente JAMAIS. Garde les marqueurs 👉 / 🌍 / 👀 exactement. Aucun titre.",
     '',
-    'Réponds UNIQUEMENT avec le bilan (les lignes 👉), rien d autre.',
+    'Réponds UNIQUEMENT avec le bilan, rien d autre.',
   ].join(NL)
 }
 
@@ -254,7 +259,7 @@ async function generateWorldNight(): Promise<{ ok: boolean; frText: string; reas
   if (topics.length === 0) return { ok: false, frText: '', reason: 'aucune actu du jour' }
   const out = await formatCall(formatPromptNight(topics))
   if (out && out.indexOf('👉') >= 0) {
-    return { ok: true, frText: NIGHT_HOOK_FR + NL + NL + NIGHT_INTRO_FR + NL + out, reason: '' }
+    return { ok: true, frText: NIGHT_HOOK_FR + NL + NL + out, reason: '' }
   }
   return { ok: false, frText: '', reason: 'format inattendu' }
 }

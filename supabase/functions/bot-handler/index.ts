@@ -843,18 +843,18 @@ Deno.serve(async (req) => {
         `🌶️ <b>Hot Wings</b>\n\n` +
         `The spiciest corner of the coop: the must-read headlines from the adult-entertainment industry — new releases, performers, launches, awards and big moves. Playful and flirty, always tasteful. 🔥\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
-        `👉 08:00 — Hot morning\n` +
-        `👉 15:00 — Hot midday\n` +
-        `👉 20:00 — Hot evening`,
+        `👉 11:35 — Hot morning\n` +
+        `👉 15:15 — Hot midday\n` +
+        `👉 19:50 — Hot evening`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       )
       await mirrorFrSetup(token, FR_TOPIC.hotwings,
         `🌶️ <b>Le Poulailler Interdit</b>\n\n` +
         `Le coin le plus épicé du poulailler : l'actu à ne pas manquer de l'industrie du divertissement pour adultes — sorties, stars, lancements, récompenses et gros mouvements. Taquin et coquin, toujours avec classe. 🔥\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
-        `👉 08:00 — Hot du matin\n` +
-        `👉 15:00 — Hot du midi\n` +
-        `👉 20:00 — Hot du soir`,
+        `👉 11:35 — Hot du matin\n` +
+        `👉 15:15 — Hot du midi\n` +
+        `👉 19:50 — Hot du soir`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )
       await sendMessage(token, chatId, tr('✅ Hot Wings publié et épinglé dans les deux groupes.', '✅ Hot Wings posted and pinned in both groups.'))
@@ -871,24 +871,24 @@ Deno.serve(async (req) => {
         `💰 <b>Crypto Coop</b>\n\n` +
         `Non-stop crypto news, decoded for everyone: the biggest market moves, regulation, ETFs, hacks and adoption — plus a daily "Cocorico Pump" spotlight on the top 24h gainer, and an end-of-day wrap. 🐓\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
-        `👉 06:30 — GM / Morning\n` +
-        `👉 10:00 — 🚀 Cocorico Pump\n` +
-        `👉 13:30 — Midday\n` +
-        `👉 17:00 — 🚀 Cocorico Pump\n` +
-        `👉 19:30 — Evening\n` +
-        `👉 20:05 — Night wrap`,
+        `👉 07:55 — GM / Morning\n` +
+        `👉 09:45 — 🚀 Cocorico Pump\n` +
+        `👉 12:30 — Midday\n` +
+        `👉 17:05 — 🚀 Cocorico Pump\n` +
+        `👉 18:55 — Evening\n` +
+        `👉 20:45 — Night wrap`,
         [[{ text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }]]
       )
       await mirrorFrSetup(token, FR_TOPIC.cryptocoop,
         `💰 <b>Crypto Cocorico</b>\n\n` +
         `L'actu crypto en continu, décryptée pour tous : les gros mouvements de marché, la régulation, les ETF, les hacks et l'adoption — plus un « Cocorico Pump » quotidien sur le plus gros gagnant 24h, et un récap de fin de journée. 🐓\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
-        `👉 06:30 — GM / Matin\n` +
-        `👉 10:00 — 🚀 Cocorico Pump\n` +
-        `👉 13:30 — Midi\n` +
-        `👉 17:00 — 🚀 Cocorico Pump\n` +
-        `👉 19:30 — Soir\n` +
-        `👉 20:05 — Récap du soir`,
+        `👉 07:55 — GM / Matin\n` +
+        `👉 09:45 — 🚀 Cocorico Pump\n` +
+        `👉 12:30 — Midi\n` +
+        `👉 17:05 — 🚀 Cocorico Pump\n` +
+        `👉 18:55 — Soir\n` +
+        `👉 20:45 — Récap du soir`,
         [[{ text: '💰 $Franc sur SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc sur TON', url: BUY_FRANC_TON_URL }]]
       )
       await sendMessage(token, chatId, tr('✅ Crypto Coop publié et épinglé dans les deux groupes.', '✅ Crypto Coop posted and pinned in both groups.'))
@@ -905,24 +905,24 @@ Deno.serve(async (req) => {
         `📰 <b>World Roost</b>\n\n` +
         `The world's biggest stories, every day, clear and to the point: geopolitics, economy, tech and the evening brief — so you never miss what matters. 🌍\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
-        `👉 05:00 — Wake-up brief\n` +
-        `👉 08:35 — Cocorico Eco\n` +
-        `👉 12:00 — Midday news\n` +
-        `👉 15:30 — Cocorico Tech\n` +
-        `👉 19:00 — Grand brief\n` +
-        `👉 20:10 — Evening wrap`,
+        `👉 07:00 — Wake-up brief\n` +
+        `👉 10:40 — Cocorico Eco\n` +
+        `👉 13:25 — Midday news\n` +
+        `👉 16:10 — Cocorico Tech\n` +
+        `👉 18:00 — The World Tonight\n` +
+        `👉 21:40 — The Day in Review`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       )
       await mirrorFrSetup(token, FR_TOPIC.worldroost,
         `📰 <b>Le Chant du Monde</b>\n\n` +
         `Les grandes actus internationales, chaque jour, claires et à l'essentiel : géopolitique, économie, tech et le brief du soir — pour ne rien rater de ce qui compte. 🌍\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
-        `👉 05:00 — Réveil Info\n` +
-        `👉 08:35 — Cocorico Éco\n` +
-        `👉 12:00 — Actu Midi\n` +
-        `👉 15:30 — Cocorico Tech\n` +
-        `👉 19:00 — Grand Brief\n` +
-        `👉 20:10 — Bilan du Soir`,
+        `👉 07:00 — Réveil Info\n` +
+        `👉 10:40 — Cocorico Éco\n` +
+        `👉 13:25 — Actu Midi\n` +
+        `👉 16:10 — Cocorico Tech\n` +
+        `👉 18:00 — Le Monde ce Soir\n` +
+        `👉 21:40 — L'actu du Jour en Bref`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )
       await sendMessage(token, chatId, tr('✅ World Roost publié et épinglé dans les deux groupes.', '✅ World Roost posted and pinned in both groups.'))
