@@ -137,7 +137,8 @@ const HOOK_FR: Record<RType, string> = {
 }
 
 // -- Telegram --------------------------------------------------
-async function post(token: string, chatId: number, text: string, threadId: number): Promise<boolean> {
+// Renvoie le message_id publie (0 si echec) pour pouvoir l'epingler.
+async function post(token: string, chatId: number, text: string, threadId: number): Promise<number> {
   try {
     const body: any = { chat_id: chatId, text, disable_web_page_preview: true }
     if (threadId) body.message_thread_id = threadId
@@ -145,9 +146,21 @@ async function post(token: string, chatId: number, text: string, threadId: numbe
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
     const data = await res.json()
-    if (!data || !data.ok) { console.error('racing post:', JSON.stringify(data).slice(0, 200)); return false }
-    return true
-  } catch (e) { console.error('racing post exception', String(e)); return false }
+    if (!data || !data.ok) { console.error('racing post:', JSON.stringify(data).slice(0, 200)); return 0 }
+    return Number(data.result && data.result.message_id) || 0
+  } catch (e) { console.error('racing post exception', String(e)); return 0 }
+}
+// Epingle un message (sans notification bruyante) - utilise pour /F1we /GPwe.
+async function pinMessage(token: string, chatId: number, messageId: number): Promise<void> {
+  if (!messageId) return
+  try {
+    const res = await tfetch('https://api.telegram.org/bot' + token + '/pinChatMessage', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, disable_notification: true }),
+    })
+    const data = await res.json()
+    if (!data || !data.ok) console.error('racing pin:', JSON.stringify(data).slice(0, 200))
+  } catch (e) { console.error('racing pin exception', String(e)) }
 }
 async function dmOwner(token: string, text: string) {
   try { await post(token, OWNER_ID, text, 0) } catch { /* ignore */ }
@@ -167,16 +180,21 @@ async function runCommand(token: string, command: string): Promise<void> {
     return
   }
 
+  // Le programme du week-end (/F1we /GPwe) est epingle dans chaque groupe.
+  const doPin = type === 'we'
+
   // EN -> The Chicken Coop (1631)
   const en = await formatCall(formatPrompt('English', sportShort, type, facts))
   if (en && en.toUpperCase().indexOf('NONE') !== 0) {
-    await post(token, COOP_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en, RACING_THREAD_EN)
+    const idEn = await post(token, COOP_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en, RACING_THREAD_EN)
+    if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
   // FR -> Le Poulailler (147)
   const fr = await formatCall(formatPrompt('French', sportShort, type, facts))
   if (fr && fr.toUpperCase().indexOf('NONE') !== 0) {
-    await post(token, FR_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + NL + NL + fr, RACING_THREAD_FR)
+    const idFr = await post(token, FR_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + NL + NL + fr, RACING_THREAD_FR)
+    if (doPin) await pinMessage(token, FR_CHAT_ID, idFr)
   } else { console.error('racing[' + command + '] FR vide/NONE') }
 
   if ((!en || en.toUpperCase().indexOf('NONE') === 0) && (!fr || fr.toUpperCase().indexOf('NONE') === 0)) {
