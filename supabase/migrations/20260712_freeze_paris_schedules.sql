@@ -1,0 +1,19 @@
+-- Gel des horaires en heure de PARIS (constants ete comme hiver).
+--
+-- pg_cron tourne en UTC. Pour figer l'heure de Paris, chaque job est
+-- programme sur ses DEUX heures UTC possibles (ete = Paris-2, hiver =
+-- Paris-1) et enveloppe d'un garde-fou : le net.http_post ne part que si
+-- l'horloge de Paris affiche EXACTEMENT l'heure cible. Une seule des deux
+-- occurrences agit chaque jour -> heure de Paris figee a vie.
+--
+-- Appliquee via Supabase MCP le 2026-07-12. Ce fichier est le reflet
+-- versionne de l'etat des crons (le workflow GitHub ne deploie que les
+-- edge functions, pas les migrations : source de verite = la base).
+--
+-- Recap (heure Paris figee) :
+--   General : 07:30 GM+blague | 08:30 Did you know? | 20:15 GN
+--   Crypto  : 05:00 GM | 08:35 Pump | 12:00 midi | 15:30 Pump | 19:00 soir | 20:10 nuit
+--   World   : 06:30 | 10:00 | 13:30 | 17:00 | 19:30 | 20:05
+--   Hot     : 08:00 | 15:00 | 20:00
+--   Tech    : recheck 12:10 | rapport prive 22:20
+-- Voir cron.job pour les commandes exactes (garde-fou Europe/Paris).
