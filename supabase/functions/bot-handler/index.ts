@@ -11,7 +11,7 @@ import { FRANCIS_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, lastFrancisR
 import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
-import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, createOneTimeInvite, deleteMessage, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
+import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, createOneTimeInvite, deleteMessage, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
 import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang, statusText } from './wallet.ts'
 
 Deno.serve(async (req) => {
@@ -583,7 +583,7 @@ Deno.serve(async (req) => {
     // de ce bloc → ils filent vers leurs handlers plus bas (sinon ils étaient avalés
     // ici et « il ne se passait rien » quand on cliquait dans le groupe).
     if ((chatId === CHICKEN_COOP || chatId === POULAILLER_FR)
-        && text !== '/setupchickencoop' && text !== '/setupwallet' && text !== '/setupgames'
+        && !text.startsWith('/setup')
         && !isKeyboardButton(text)) {
 
       const grpLang: 'en' | 'fr' = (chatId === POULAILLER_FR) ? 'fr' : 'en'
@@ -697,27 +697,21 @@ Deno.serve(async (req) => {
     //  /setupW — Wallet Connect topic
     // ══════════════════════════════════════════════════════════
     if (text === '/setupwallet') {
-      const status = await getChatMemberStatus(token, chatId, msg.from.id)
-      if (userId !== OWNER_ID && status !== 'administrator' && status !== 'creator') {
-        await sendMessage(token, chatId, `❌ This command is for admins only.`, threadId ? { message_thread_id: threadId } : {})
-        return new Response('ok')
-      }
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      const extra1 = threadId ? { message_thread_id: threadId } : {}
-      const sent1 = await sendMessage(token, chatId,
+      await mirrorEnSetup(token, EN_TOPIC.wallet,
         `🔗 <b>UNLOCK THE FULL EXPERIENCE</b>\n\n` +
         `Hold $FRANC on <b>Solana</b> or <b>TON</b> to unlock exclusive features across many games — plus a special 🌶️ spicy category. For free!\n\n` +
         `Or unlock everything with ⭐ Stars and get a generous cashback.\n\n` +
         `<i>$FRANC detection is automatic. Tap a button below to connect or unlock 👇</i>`,
-        { ...extra1, reply_markup: { inline_keyboard: [
+        [
           [{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🔓 Cashback⭐', url: CASHBACK_DEEPLINK }],
           [{ text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }],
           [{ text: '📊 Check my status', callback_data: 'status' }],
           [{ text: '🐔 All games & rooster universe', url: MENU_DEEPLINK }]
-        ]}}
+        ]
       )
-      if (sent1?.message_id) await pinMessage(token, chatId, sent1.message_id)
-      // Recopie FR dans « Le Poulailler » (topic Wallet)
+      // Version FR dans « Le Poulailler » (topic Wallet)
       await mirrorFrSetup(token, FR_TOPIC.wallet,
         `🔗 <b>DÉBLOQUE L'EXPÉRIENCE COMPLÈTE</b>\n\n` +
         `Détiens du $FRANC sur <b>Solana</b> ou <b>TON</b> pour débloquer des fonctionnalités exclusives dans de nombreux jeux — plus une catégorie 🌶️ épicée spéciale. Gratuitement !\n\n` +
@@ -730,6 +724,7 @@ Deno.serve(async (req) => {
           [{ text: '🐔 Tous les jeux & univers Francis', url: MENU_DEEPLINK }]
         ]
       )
+      await sendMessage(token, chatId, tr('✅ Wallet publié et épinglé dans les deux groupes.', '✅ Wallet posted and pinned in both groups.'))
       return new Response('ok')
     }
 
@@ -737,14 +732,9 @@ Deno.serve(async (req) => {
     //  /setupgames — message du topic "Games" (renvoie vers le bot)
     // ══════════════════════════════════════════════════════════
     if (text === '/setupgames') {
-      const status = await getChatMemberStatus(token, chatId, msg.from.id)
-      if (userId !== OWNER_ID && status !== 'administrator' && status !== 'creator') {
-        await sendMessage(token, chatId, `❌ This command is for admins only.`, threadId ? { message_thread_id: threadId } : {})
-        return new Response('ok')
-      }
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      const extraG = threadId ? { message_thread_id: threadId } : {}
-      const sentG = await sendMessage(token, chatId,
+      await mirrorEnSetup(token, EN_TOPIC.games,
         `🎉 <b>Welcome to Francis' Games Universe</b>\n\n` +
         `🐓 <b>Tamagotchi</b> — Keep Francis alive\n` +
         `🔫 <b>FrancRun</b> — Run. Dodge. Score.\n` +
@@ -755,7 +745,7 @@ Deno.serve(async (req) => {
         `🟢 <b>Motus</b> — Guess the hidden word\n` +
         `🐍 <b>ChickenSnake</b> — Slither. Gobble. Grow.\n` +
         `🔍 <b>Words searches</b> — Spot. Circle. Score.`,
-        { ...extraG, reply_markup: { inline_keyboard: [
+        [
           [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
           [{ text: '🔫 FrancRun', url: FRANCRUN_URL }, { text: '⛵ Ormuz', url: ORMUZ_URL }],
@@ -763,10 +753,9 @@ Deno.serve(async (req) => {
           [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
           [{ text: '🔍 Words searches', url: WORDSEARCH_URL }],
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }]
-        ]}}
+        ]
       )
-      if (sentG?.message_id) await pinMessage(token, chatId, sentG.message_id)
-      // Recopie FR dans « Le Poulailler » (topic Jeux)
+      // Version FR dans « Le Poulailler » (topic Jeux)
       await mirrorFrSetup(token, FR_TOPIC.games,
         `🎉 <b>Bienvenue dans l'univers des jeux de Francis</b>\n\n` +
         `🐓 <b>Tamagotchi</b> — Garde Francis en vie\n` +
@@ -788,22 +777,14 @@ Deno.serve(async (req) => {
           [{ text: '📜 Règles des jeux', url: RULES_DEEPLINK }]
         ]
       )
+      await sendMessage(token, chatId, tr('✅ Jeux publiés et épinglés dans les deux groupes.', '✅ Games posted and pinned in both groups.'))
       return new Response('ok')
     }
 
     if (text === '/setupchickencoop') {
-      const status = await getChatMemberStatus(token, chatId, msg.from.id)
-      if (userId !== OWNER_ID && status !== 'administrator' && status !== 'creator') {
-        await sendMessage(token, chatId, `❌ This command is for admins only.`,
-          threadId ? { message_thread_id: threadId } : {}
-        )
-        return new Response('ok')
-      }
-
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      const extra = threadId ? { message_thread_id: threadId } : {}
-
-      const sentMsg = await sendMessage(token, chatId,
+      await mirrorEnSetup(token, EN_TOPIC.coop,
         `🐓 <b>Welcome to The Chicken Coop!</b>\n\n` +
         `The official home of <b>$FRANC by Francis the rooster</b> — a community memecoin with a whole universe of games. 🎮\n\n` +
         `Find your way around:\n` +
@@ -819,15 +800,13 @@ Deno.serve(async (req) => {
         `💲 Not a holder yet? Unlock everything with ⭐ Stars and get $FRANC cashback!\n\n` +
         `Have fun, be kind, and enjoy the coop! 🐔\n` +
         `🌐 Group language: 🇬🇧`,
-        { ...extra, reply_markup: { inline_keyboard: [
+        [
           [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }, { text: '🔗 Wallet', url: WALLET_URL }],
           [{ text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }, { text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }]
-        ]}}
+        ]
       )
-
-      if (sentMsg?.message_id) await pinMessage(token, chatId, sentMsg.message_id)
-      // Recopie FR dans « Le Poulailler » (topic Accueil)
+      // Version FR dans « Le Poulailler » (topic Accueil)
       await mirrorFrSetup(token, FR_TOPIC.coop,
         `🐓 <b>Bienvenue au Poulailler !</b>\n\n` +
         `La maison officielle de <b>$FRANC by Francis le coq</b> — un memecoin communautaire avec tout un univers de jeux. 🎮\n\n` +
@@ -850,6 +829,103 @@ Deno.serve(async (req) => {
           [{ text: '💰 $Franc sur TON', url: BUY_FRANC_TON_URL }, { text: '💰 $Franc sur SOL', url: BUY_FRANC_SOL_URL }]
         ]
       )
+      await sendMessage(token, chatId, tr('✅ Chicken Coop publié et épinglé dans les deux groupes.', '✅ Chicken Coop posted and pinned in both groups.'))
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  /setuphotwings — présentation du topic Hot (🌶️)
+    // ══════════════════════════════════════════════════════════
+    if (text === '/setuphotwings') {
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
+      await deleteMessage(token, chatId, messageId)
+      await mirrorEnSetup(token, EN_TOPIC.hotwings,
+        `🌶️ <b>Hot Wings</b>\n\n` +
+        `The spiciest corner of the coop: the must-read headlines from the adult-entertainment industry — new releases, performers, launches, awards and big moves. Playful and flirty, always tasteful. 🔥\n\n` +
+        `🕒 <b>Posted every day (Paris time):</b>\n` +
+        `👉 08:00 — Hot morning\n` +
+        `👉 15:00 — Hot midday\n` +
+        `👉 20:00 — Hot evening`,
+        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
+      )
+      await mirrorFrSetup(token, FR_TOPIC.hotwings,
+        `🌶️ <b>Le Poulailler Interdit</b>\n\n` +
+        `Le coin le plus épicé du poulailler : l'actu à ne pas manquer de l'industrie du divertissement pour adultes — sorties, stars, lancements, récompenses et gros mouvements. Taquin et coquin, toujours avec classe. 🔥\n\n` +
+        `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
+        `👉 08:00 — Hot du matin\n` +
+        `👉 15:00 — Hot du midi\n` +
+        `👉 20:00 — Hot du soir`,
+        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
+      )
+      await sendMessage(token, chatId, tr('✅ Hot Wings publié et épinglé dans les deux groupes.', '✅ Hot Wings posted and pinned in both groups.'))
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  /setupcryptocoop — présentation du topic Crypto (💰)
+    // ══════════════════════════════════════════════════════════
+    if (text === '/setupcryptocoop') {
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
+      await deleteMessage(token, chatId, messageId)
+      await mirrorEnSetup(token, EN_TOPIC.cryptocoop,
+        `💰 <b>Crypto Coop</b>\n\n` +
+        `Non-stop crypto news, decoded for everyone: the biggest market moves, regulation, ETFs, hacks and adoption — plus a daily "Cocorico Pump" spotlight on the top 24h gainer, and an end-of-day wrap. 🐓\n\n` +
+        `🕒 <b>Posted every day (Paris time):</b>\n` +
+        `👉 06:30 — GM / Morning\n` +
+        `👉 10:00 — 🚀 Cocorico Pump\n` +
+        `👉 13:30 — Midday\n` +
+        `👉 17:00 — 🚀 Cocorico Pump\n` +
+        `👉 19:30 — Evening\n` +
+        `👉 20:05 — Night wrap`,
+        [[{ text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }]]
+      )
+      await mirrorFrSetup(token, FR_TOPIC.cryptocoop,
+        `💰 <b>Crypto Cocorico</b>\n\n` +
+        `L'actu crypto en continu, décryptée pour tous : les gros mouvements de marché, la régulation, les ETF, les hacks et l'adoption — plus un « Cocorico Pump » quotidien sur le plus gros gagnant 24h, et un récap de fin de journée. 🐓\n\n` +
+        `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
+        `👉 06:30 — GM / Matin\n` +
+        `👉 10:00 — 🚀 Cocorico Pump\n` +
+        `👉 13:30 — Midi\n` +
+        `👉 17:00 — 🚀 Cocorico Pump\n` +
+        `👉 19:30 — Soir\n` +
+        `👉 20:05 — Récap du soir`,
+        [[{ text: '💰 $Franc sur SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc sur TON', url: BUY_FRANC_TON_URL }]]
+      )
+      await sendMessage(token, chatId, tr('✅ Crypto Coop publié et épinglé dans les deux groupes.', '✅ Crypto Coop posted and pinned in both groups.'))
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  /setupworldroost — présentation du topic World (📰)
+    // ══════════════════════════════════════════════════════════
+    if (text === '/setupworldroost') {
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
+      await deleteMessage(token, chatId, messageId)
+      await mirrorEnSetup(token, EN_TOPIC.worldroost,
+        `📰 <b>World Roost</b>\n\n` +
+        `The world's biggest stories, every day, clear and to the point: geopolitics, economy, tech and the evening brief — so you never miss what matters. 🌍\n\n` +
+        `🕒 <b>Posted every day (Paris time):</b>\n` +
+        `👉 05:00 — Wake-up brief\n` +
+        `👉 08:35 — Cocorico Eco\n` +
+        `👉 12:00 — Midday news\n` +
+        `👉 15:30 — Cocorico Tech\n` +
+        `👉 19:00 — Grand brief\n` +
+        `👉 20:10 — Evening wrap`,
+        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
+      )
+      await mirrorFrSetup(token, FR_TOPIC.worldroost,
+        `📰 <b>Le Chant du Monde</b>\n\n` +
+        `Les grandes actus internationales, chaque jour, claires et à l'essentiel : géopolitique, économie, tech et le brief du soir — pour ne rien rater de ce qui compte. 🌍\n\n` +
+        `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
+        `👉 05:00 — Réveil Info\n` +
+        `👉 08:35 — Cocorico Éco\n` +
+        `👉 12:00 — Actu Midi\n` +
+        `👉 15:30 — Cocorico Tech\n` +
+        `👉 19:00 — Grand Brief\n` +
+        `👉 20:10 — Bilan du Soir`,
+        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
+      )
+      await sendMessage(token, chatId, tr('✅ World Roost publié et épinglé dans les deux groupes.', '✅ World Roost posted and pinned in both groups.'))
       return new Response('ok')
     }
 

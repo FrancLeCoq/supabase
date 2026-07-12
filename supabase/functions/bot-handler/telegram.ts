@@ -10,8 +10,10 @@ export const CHICKEN_COOP = -1003842240104
 
 export const POULAILLER_FR = -1004352289820
 
-export const FR_TOPIC = { coop: 1, games: 29, wallet: 31 }
-// Recopie un message de setup (déjà traduit) dans un topic du Poulailler, puis l'épingle.
+// Topics (message_thread_id) de chaque rubrique, par groupe.
+export const FR_TOPIC = { coop: 1, games: 29, wallet: 31, hotwings: 33, cryptocoop: 43, worldroost: 45 }
+export const EN_TOPIC = { coop: 1, games: 1300, wallet: 405, hotwings: 1488, cryptocoop: 1490, worldroost: 1489 }
+// Recopie un message de setup dans un topic d'un groupe, puis l'épingle.
 // ⚠️ Le topic « General » (racine du forum) a l'id 1 : Telegram REFUSE message_thread_id=1
 // ("message thread not found") → pour le General on N'ENVOIE PAS de thread_id.
 // (C'est pour ça que /setupchickencoop, dirigé vers le topic 1, ne partait pas alors que
@@ -24,6 +26,16 @@ export async function mirrorFrSetup(token: string, threadId: number, text: strin
     const sent = await sendMessage(token, POULAILLER_FR, text, extra)
     if (sent?.message_id) await pinMessage(token, POULAILLER_FR, sent.message_id)
   } catch (e) { console.error('mirrorFrSetup:', String(e)) }
+}
+
+// Symétrique côté anglais : publie la version EN dans The Chicken Coop, puis l'épingle.
+export async function mirrorEnSetup(token: string, threadId: number, text: string, inline_keyboard: any[]) {
+  try {
+    const extra: Record<string, any> = { reply_markup: { inline_keyboard } }
+    if (threadId && threadId > 1) extra.message_thread_id = threadId
+    const sent = await sendMessage(token, CHICKEN_COOP, text, extra)
+    if (sent?.message_id) await pinMessage(token, CHICKEN_COOP, sent.message_id)
+  } catch (e) { console.error('mirrorEnSetup:', String(e)) }
 }
 
 export const ROOSTER_CHANNEL_ID = -1003975108886   // Rooster channel (annonces) → pont vers The Chicken Coop / General
