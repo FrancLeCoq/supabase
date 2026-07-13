@@ -24,7 +24,10 @@ ABOUT $FRANC (stay accurate, invent nothing about $FRANC itself):
 - A community memecoin built around Francis the rooster - a whole fun "rooster universe".
 - Real content: a growing collection of in-app mini-games - the flagship Tamagotchi (you raise Francis the rooster and can even chat with him via Telegram), plus EggClicker, FrancRun, Sudoku, Mastermind, Motus, Ormuz, more coming.
 - Lives on two chains: Solana and TON (runs right inside Telegram).
-- Holding a tiny bit of $FRANC unlocks all the games.
+- All the mini-games are FREE to play, right inside Telegram. (Holding a little $FRANC unlocks some EXTRA features, but you NEVER need $FRANC just to play.)
+
+GAME MENTION RULE (IMPORTANT):
+- When you mention a game (based on today's topic), make it clear it is FREE and that it's playable on Telegram. NEVER say or imply that you need $FRANC to play — that is wrong. Do NOT bring up the holder/unlock detail; simply invite people to enjoy the free game on Telegram.
 
 NUMBERS & DATES:
 - You MAY use dates, figures, or fun stats about REAL-WORLD topics to make it richer and more credible.
@@ -67,7 +70,7 @@ const FACT_TOPICS = [
   'the Francis-the-rooster universe and community vibe',
   'roosters / barnyard / dawn nature facts bridged to Francis',
   'the Gallic rooster (le coq gaulois), national symbol of France, tied to Francis',
-  'a specific $FRANC Telegram feature (chatting with Francis, unlocking every game by holding a little $FRANC)',
+  'a specific $FRANC Telegram feature (chatting with Francis, or the fact every mini-game is free to play right inside Telegram)',
 ]
 
 function pick<T>(arr: T[]): T {
