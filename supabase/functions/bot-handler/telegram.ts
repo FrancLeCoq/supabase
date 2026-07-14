@@ -80,25 +80,42 @@ export async function createOneTimeInvite(token: string, chatId: number): Promis
   } catch { return null }
 }
 
-// ── Réponse "CA" (Contract Address) — SOL + TON ───────────────
-// Bilingue, adresses en clair (copiables d'un tap) + boutons d'achat.
+// ── Détection d'une demande de CA (adresse du contrat) ────────
+// Prudent en français : on évite de matcher "ça". "CA" en MAJUSCULES,
+// "contract/contrat", "token address" et les tournures "le/du/ton ca".
+export function isCaRequest(raw: string): boolean {
+  if (/\bCA\b/.test(raw)) return true
+  const t = (raw || '').toLowerCase()
+  return t.includes('contract') || t.includes('contrat')
+    || t.includes('token address') || t.includes('adresse du token') || t.includes('adresse token')
+    || /\ble ca\b|\bdu ca\b|\bton ca\b|\bvotre ca\b|\bc\.a\.?\b/.test(t)
+}
 
-export async function sendCA(token: string, chatId: number, isFR: boolean) {
-  const txt = isFR
-    ? `📑 <b>Adresses du contrat $FRANC</b>\n\n` +
-      `◎ <b>$FRANC on SOL :</b>\n<code>${FRANC_CA_SOL}</code>\n\n` +
-      `💎 <b>$FRANC on TON :</b>\n<code>${FRANC_CA_TON}</code>\n\n` +
+// ── Réponse "CA" (Contract Address) — SOL + TON ───────────────
+// Bilingue, adresses en clair (copiables d'un tap) + liens directs
+// Pump.fun / Blum en texte ET en boutons. Payload réutilisable
+// (chat classique, groupe avec topic, ou compte Business).
+export function caPayload(isFR: boolean): { text: string; inline_keyboard: any[] } {
+  const text = isFR
+    ? `📑 <b>Adresses officielles du contrat $FRANC</b>\n\n` +
+      `◎ <b>SOL :</b>\n<code>${FRANC_CA_SOL}</code>\n🔗 Pump.fun : ${BUY_FRANC_SOL_URL}\n\n` +
+      `💎 <b>TON :</b>\n<code>${FRANC_CA_TON}</code>\n🔗 Blum : ${BUY_FRANC_TON_URL}\n\n` +
       `<i>Touche une adresse pour la copier. Vérifie toujours le CA officiel ! 🐓</i>`
-    : `📑 <b>$FRANC Contract Addresses</b>\n\n` +
-      `◎ <b>$FRANC on SOL:</b>\n<code>${FRANC_CA_SOL}</code>\n\n` +
-      `💎 <b>$FRANC on TON:</b>\n<code>${FRANC_CA_TON}</code>\n\n` +
+    : `📑 <b>Official $FRANC contract addresses</b>\n\n` +
+      `◎ <b>SOL:</b>\n<code>${FRANC_CA_SOL}</code>\n🔗 Pump.fun: ${BUY_FRANC_SOL_URL}\n\n` +
+      `💎 <b>TON:</b>\n<code>${FRANC_CA_TON}</code>\n🔗 Blum: ${BUY_FRANC_TON_URL}\n\n` +
       `<i>Tap an address to copy it. Always verify the official CA! 🐓</i>`
-  await sendMessage(token, chatId, txt, {
-    reply_markup: { inline_keyboard: [[
-      { text: '◎ $FRANC on SOL', url: BUY_FRANC_SOL_URL },
-      { text: '💎 $FRANC on TON', url: BUY_FRANC_TON_URL }
-    ]]}
-  })
+  return { text, inline_keyboard: [[
+    { text: '◎ $FRANC on SOL', url: BUY_FRANC_SOL_URL },
+    { text: '💎 $FRANC on TON', url: BUY_FRANC_TON_URL },
+  ]] }
+}
+
+export async function sendCA(token: string, chatId: number, isFR: boolean, threadId = 0) {
+  const cp = caPayload(isFR)
+  const extra: Record<string, any> = { reply_markup: { inline_keyboard: cp.inline_keyboard } }
+  if (threadId) extra.message_thread_id = threadId
+  await sendMessage(token, chatId, cp.text, extra)
 }
 
 // ── Réponse "No DM" — anti-scam + patience (EN d'abord, puis FR) ──

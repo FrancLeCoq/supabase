@@ -133,6 +133,17 @@ export async function saveChatMemory(sb: any, chatKey: string, role: 'user' | 'm
   try { await sb.from('chat_memory').insert({ chat_key: chatKey, role, content: String(text || '').slice(0, 2000) }) } catch { /* best-effort */ }
 }
 
+// Verrou PARTAGÉ (DB) : TRUE seulement pour l'instance qui obtient le créneau
+// (aucun verrou récent) -> une seule réponse par fenêtre, même multi-instances.
+// En cas d'erreur/RPC absente : renvoie TRUE (on répond plutôt que de se taire).
+export async function claimReplySlot(sb: any, chatKey: string, windowSeconds: number): Promise<boolean> {
+  try {
+    const { data, error } = await sb.rpc('claim_reply_slot', { p_chat_key: chatKey, p_window_seconds: windowSeconds })
+    if (error) { console.error('claim_reply_slot error:', error.message); return true }
+    return data === true
+  } catch (e) { console.error('claim_reply_slot exception:', String(e)); return true }
+}
+
 export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en', mode: 'group' | 'dm' = 'group', history: ChatTurn[] = []): Promise<string | null> {
   const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) { console.error('askFrancisAI: GEMINI_API_KEY manquante'); return null }

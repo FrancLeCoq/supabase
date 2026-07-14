@@ -7,11 +7,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, fetchChatMemory, lastFrancisReplyByChat, saveChatMemory } from './francis-ai.ts'
+import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, claimReplySlot, fetchChatMemory, lastFrancisReplyByChat, saveChatMemory } from './francis-ai.ts'
 import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
-import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, createOneTimeInvite, deleteMessage, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
+import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
 import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang, statusText } from './wallet.ts'
 
 Deno.serve(async (req) => {
@@ -425,9 +425,22 @@ Deno.serve(async (req) => {
       const bChat  = bm.chat.id
       const memKeyB = 'bm:' + bChat
       await saveChatMemory(sb, memKeyB, 'user', bText)   // contexte immédiat (batch + mémoire)
-      // Anti-flood : au plus 1 réponse / FRANCIS_DM_COOLDOWN_MS par conversation.
-      if ((Date.now() - (lastFrancisReplyByChat[bChat] || 0)) <= FRANCIS_DM_COOLDOWN_MS) return new Response('ok')
-      lastFrancisReplyByChat[bChat] = Date.now()   // on arme tout de suite
+      // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
+      if (isCaRequest(bText)) {
+        const bIsFR = /[àâçéèêëîïôûù]/.test(bText.toLowerCase()) || /\b(le|la|c'est|quoi|adresse|contrat|salut|bonjour|merci|envoie|donne)\b/.test(bText.toLowerCase())
+        const cp = caPayload(bIsFR)
+        try {
+          await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: cp.text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: cp.inline_keyboard } }),
+          })
+        } catch (e) { console.error('business CA:', String(e)) }
+        return new Response('ok')
+      }
+      // Verrou PARTAGÉ (DB) : une seule réponse par fenêtre, même si les messages
+      // d'une salve arrivent sur plusieurs instances de la fonction.
+      const bClaimed = await claimReplySlot(sb, memKeyB, 90)
+      if (!bClaimed) return new Response('ok')
       const bg = (async () => {
         try {
           // Laisse arriver les autres messages du burst, puis répond à L'ENSEMBLE.
@@ -436,7 +449,7 @@ Deno.serve(async (req) => {
           let userMsg = bText, hist = turns
           if (turns.length && turns[turns.length - 1].role === 'user') { userMsg = turns[turns.length - 1].text; hist = turns.slice(0, -1) }
           const reply = await askFrancisAI(userMsg, 'en', 'dm', hist)   // dm = bilingue auto + redirection par langue
-          if (!reply) { lastFrancisReplyByChat[bChat] = 0; return }   // rien à dire → on relâche
+          if (!reply) return
           await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: reply, parse_mode: 'HTML', disable_web_page_preview: true }),
@@ -750,37 +763,41 @@ Deno.serve(async (req) => {
       {
         // On ne réagit qu'à de vrais messages texte (pas commandes, pas vide)
         const isPlainText = rawText.length > 0 && !rawText.startsWith('/')
-        const cooledDown = (Date.now() - (lastFrancisReplyByChat[chatId] || 0)) > FRANCIS_COOLDOWN_MS
-        if (isPlainText && cooledDown) {
+        if (isPlainText) {
           // Bot en pause pour ce groupe ? (piloté par /stopbot… /playbot… depuis le bot en privé)
           try {
             const { data: pauseRow } = await supabase.from('bot_pause').select('paused').eq('chat_id', chatId).single()
             if (pauseRow?.paused) return new Response('ok')
           } catch (_) { /* pas de ligne / table injoignable → on considère actif */ }
-          // On arme le cooldown TOUT DE SUITE : la réponse part en tâche de
-          // fond (après un délai), pour éviter qu'un 2e message reçu pendant
-          // l'attente ne déclenche une réponse en double.
-          lastFrancisReplyByChat[chatId] = Date.now()
-          const bgMsgId = messageId
-          const bgText = rawText
-          const bgThread = threadId
+          // CA impératif : réponse déterministe, dans le topic où c'est demandé.
+          if (isCaRequest(rawText)) {
+            const cp = caPayload(isFR)
+            await sendMessage(token, chatId, cp.text,
+              { ...(threadId ? { message_thread_id: threadId } : {}), reply_markup: { inline_keyboard: cp.inline_keyboard } })
+            return new Response('ok')
+          }
+          // Verrou PARTAGÉ (DB) : une seule réponse / 5 min, même multi-instances.
           const grpKey = 'grp:' + chatId
-          const bg = (async () => {
-            const history = await fetchChatMemory(supabase, grpKey, 10)   // cohérence dans le groupe
-            const reply = await askFrancisAI(bgText, grpLang, 'group', history)
-            if (!reply) { lastFrancisReplyByChat[chatId] = 0; return }  // rien à dire → on relâche le cooldown
-            // Délai volontaire : Francis répond ~1 min après le message,
-            // pour que l'échange paraisse naturel (pas instantané/robotique).
-            await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
-            await sendMessage(token, chatId, reply,
-              { reply_to_message_id: bgMsgId, ...(bgThread ? { message_thread_id: bgThread } : {}) })
-            await saveChatMemory(supabase, grpKey, 'user', bgText)
-            await saveChatMemory(supabase, grpKey, 'model', reply)
-          })()
-          // Répond 200 immédiatement au webhook (sinon Telegram retente
-          // l'update → doublons) tout en gardant l'isolate en vie pour la
-          // tâche de fond.
-          try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }
+          const grpClaimed = await claimReplySlot(supabase, grpKey, 300)
+          if (grpClaimed) {
+            const bgMsgId = messageId
+            const bgText = rawText
+            const bgThread = threadId
+            const bg = (async () => {
+              const history = await fetchChatMemory(supabase, grpKey, 10)   // cohérence dans le groupe
+              const reply = await askFrancisAI(bgText, grpLang, 'group', history)
+              if (!reply) return
+              // Délai volontaire : Francis répond ~1 min après le message,
+              // pour que l'échange paraisse naturel (pas instantané/robotique).
+              await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
+              await sendMessage(token, chatId, reply,
+                { reply_to_message_id: bgMsgId, ...(bgThread ? { message_thread_id: bgThread } : {}) })
+              await saveChatMemory(supabase, grpKey, 'user', bgText)
+              await saveChatMemory(supabase, grpKey, 'model', reply)
+            })()
+            // 200 immédiat au webhook (sinon Telegram retente → doublons).
+            try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }
+          }
         }
         return new Response('ok')
       }
@@ -1621,9 +1638,12 @@ Deno.serve(async (req) => {
         && !rawText.startsWith('/') && !isKeyboardButton(text)) {
       const memKey = 'dm:' + chatId
       await saveChatMemory(supabase, memKey, 'user', rawText)   // contexte immédiat (batch + mémoire)
-      // Anti-flood : au plus 1 réponse / FRANCIS_DM_COOLDOWN_MS par conversation.
-      if ((Date.now() - (lastFrancisReplyByChat[chatId] || 0)) <= FRANCIS_DM_COOLDOWN_MS) return new Response('ok')
-      lastFrancisReplyByChat[chatId] = Date.now()   // armé tout de suite
+      // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
+      if (isCaRequest(rawText)) { await sendCA(token, chatId, isFR); return new Response('ok') }
+      // Verrou PARTAGÉ (DB) : une seule réponse par fenêtre, même si les messages
+      // d'une salve arrivent sur plusieurs instances de la fonction.
+      const dmClaimed = await claimReplySlot(supabase, memKey, 90)
+      if (!dmClaimed) return new Response('ok')
       const bg = (async () => {
         try {
           // Laisse arriver les autres messages du burst, puis répond à L'ENSEMBLE.
@@ -1632,7 +1652,7 @@ Deno.serve(async (req) => {
           let userMsg = rawText, hist = turns
           if (turns.length && turns[turns.length - 1].role === 'user') { userMsg = turns[turns.length - 1].text; hist = turns.slice(0, -1) }
           const reply = await askFrancisAI(userMsg, isFR ? 'fr' : 'en', 'dm', hist)
-          if (!reply) { lastFrancisReplyByChat[chatId] = 0; return }   // rien à dire → on relâche
+          if (!reply) return
           await sendMessage(token, chatId, reply)
           await saveChatMemory(supabase, memKey, 'model', reply)
         } catch (e) { console.error('DM francis bg:', String(e)) }
