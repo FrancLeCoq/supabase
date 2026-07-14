@@ -1530,7 +1530,10 @@ Deno.serve(async (req) => {
       const bg = (async () => {
         try {
           const reply = await askFrancisAI(bgDm, isFR ? 'fr' : 'en', 'dm')
-          if (reply) await sendMessage(token, chatId, reply)
+          if (!reply) return
+          // Réponse différée ~1 min → échange plus naturel, moins tac-au-tac.
+          await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
+          await sendMessage(token, chatId, reply)
         } catch (e) { console.error('DM francis bg:', String(e)) }
       })()
       try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }
