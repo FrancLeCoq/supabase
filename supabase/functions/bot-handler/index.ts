@@ -7,7 +7,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, lastFrancisReplyByChat } from './francis-ai.ts'
+import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, fetchChatMemory, lastFrancisReplyByChat, saveChatMemory } from './francis-ai.ts'
 import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
@@ -426,15 +426,19 @@ Deno.serve(async (req) => {
       // Anti-flood : au plus 1 réponse / FRANCIS_DM_COOLDOWN_MS par conversation.
       if ((Date.now() - (lastFrancisReplyByChat[bChat] || 0)) <= FRANCIS_DM_COOLDOWN_MS) return new Response('ok')
       lastFrancisReplyByChat[bChat] = Date.now()   // on arme tout de suite (les messages du burst suivant sont ignorés)
+      const memKeyB = 'bm:' + bChat
       const bg = (async () => {
         try {
-          const reply = await askFrancisAI(bText, 'en', 'dm')   // dm = bilingue auto + redirection par langue
+          const history = await fetchChatMemory(sb, memKeyB, 5)   // cohérence : 5 derniers messages
+          const reply = await askFrancisAI(bText, 'en', 'dm', history)   // dm = bilingue auto + redirection par langue
           if (!reply) { lastFrancisReplyByChat[bChat] = 0; return }   // rien à dire → on relâche
           await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))  // ~1 min → plus naturel
           await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: reply, parse_mode: 'HTML', disable_web_page_preview: true }),
           })
+          await saveChatMemory(sb, memKeyB, 'user', bText)
+          await saveChatMemory(sb, memKeyB, 'model', reply)
         } catch (e) { console.error('business_message bg:', String(e)) }
       })()
       try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }
@@ -1612,13 +1616,17 @@ Deno.serve(async (req) => {
       if ((Date.now() - (lastFrancisReplyByChat[chatId] || 0)) <= FRANCIS_DM_COOLDOWN_MS) return new Response('ok')
       lastFrancisReplyByChat[chatId] = Date.now()   // armé tout de suite (burst suivant ignoré)
       const bgDm = rawText
+      const memKey = 'dm:' + chatId
       const bg = (async () => {
         try {
-          const reply = await askFrancisAI(bgDm, isFR ? 'fr' : 'en', 'dm')
+          const history = await fetchChatMemory(supabase, memKey, 5)   // cohérence : 5 derniers messages
+          const reply = await askFrancisAI(bgDm, isFR ? 'fr' : 'en', 'dm', history)
           if (!reply) { lastFrancisReplyByChat[chatId] = 0; return }   // rien à dire → on relâche
           // Réponse différée ~1 min → échange plus naturel, moins tac-au-tac.
           await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
           await sendMessage(token, chatId, reply)
+          await saveChatMemory(supabase, memKey, 'user', bgDm)
+          await saveChatMemory(supabase, memKey, 'model', reply)
         } catch (e) { console.error('DM francis bg:', String(e)) }
       })()
       try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }

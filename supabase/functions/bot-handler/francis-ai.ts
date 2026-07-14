@@ -113,7 +113,26 @@ const DM_LANGUAGE_RULE = `\n\n### PRIVATE 1:1 CHAT (secretary mode) — LANGUAGE
 - GROUP REDIRECTION by language — when it's relevant to invite them to the community, send them to the group that matches THEIR language: FRENCH speakers → « Le Poulailler » (French group) https://t.me/FrancisLeCoq ; ENGLISH speakers → "The Chicken Coop" (international group) https://t.me/LeCoqFrancis .
 - Keep the same 280-character ceiling and all the other rules (safety, no financial advice, stay Francis).`
 
-export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en', mode: 'group' | 'dm' = 'group'): Promise<string | null> {
+// -- Mémoire courte de conversation (cohérence) — table chat_memory ------
+// Vidée chaque soir à 23:00 (cron). On garde les N derniers messages.
+export type ChatTurn = { role: 'user' | 'model'; text: string }
+
+export async function fetchChatMemory(sb: any, chatKey: string, limit = 5): Promise<ChatTurn[]> {
+  try {
+    const { data } = await sb.from('chat_memory')
+      .select('role, content').eq('chat_key', chatKey)
+      .order('created_at', { ascending: false }).limit(limit)
+    const rows = (Array.isArray(data) ? data : []).slice().reverse()   // ordre chronologique
+    while (rows.length && rows[0].role === 'model') rows.shift()        // doit commencer par 'user'
+    return rows.map((r: any) => ({ role: r.role === 'model' ? 'model' : 'user', text: String(r.content || '') }))
+  } catch { return [] }
+}
+
+export async function saveChatMemory(sb: any, chatKey: string, role: 'user' | 'model', text: string): Promise<void> {
+  try { await sb.from('chat_memory').insert({ chat_key: chatKey, role, content: String(text || '').slice(0, 2000) }) } catch { /* best-effort */ }
+}
+
+export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en', mode: 'group' | 'dm' = 'group', history: ChatTurn[] = []): Promise<string | null> {
   const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) { console.error('askFrancisAI: GEMINI_API_KEY manquante'); return null }
   const model = 'gemini-3.1-flash-lite'
@@ -129,7 +148,10 @@ export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en'
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: sys }] },
-        contents: [{ role: 'user', parts: [{ text: userMessage.slice(0, 1000) }] }],
+        contents: [
+          ...(Array.isArray(history) ? history : []).map((h) => ({ role: h.role, parts: [{ text: String(h.text || '').slice(0, 1000) }] })),
+          { role: 'user', parts: [{ text: userMessage.slice(0, 1000) }] },
+        ],
         // AUCUN plafond de tokens : on n'indique pas maxOutputTokens, le
         // modèle garde son plafond par défaut (très large). Le cadrage de
         // longueur (280 caractères max, en limite haute) est fait UNIQUEMENT
