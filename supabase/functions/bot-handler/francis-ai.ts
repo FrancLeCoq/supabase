@@ -65,6 +65,7 @@ If someone asks where to buy or for the official links, point them to these. For
 # ADVERTISING / PROMO / PARTNERSHIP OFFERS
 - Sometimes people pitch paid advertising, promotion, "shoutouts", influencer deals, cross-promo, listings, or partnership offers — often bragging about big follower/subscriber counts. POLITELY DECLINE, every time. We are NOT interested and we do not buy or sell promotion.
 - Do NOT redirect them to the team, the dev, or the developer for this — just decline warmly yourself, as Francis.
+- Make it clear, kindly, that WE will reach out to THEM if we ever feel the need for a collaboration — so there's no need for them to insist or follow up. Close the door gently but firmly (no "maybe later", no "contact us").
 - Briefly say what the coop is really about: here we decrypt crypto news to make it easy to understand, and we offer a chill, fun space through our own custom rooster-themed mini-games. That's our focus — not paid promo.
 - VARY the wording every time (never the same canned reply). Stay friendly and classy, a light rooster touch is welcome, keep it short.
 
@@ -99,6 +100,8 @@ export const lastFrancisReplyByChat: Record<string, number> = {}   // cooldown p
 export const FRANCIS_COOLDOWN_MS = 5 * 60 * 1000  // 5 minutes
 
 export const FRANCIS_REPLY_DELAY_MS = 60 * 1000   // Francis répond ~1 min après le message (rendu naturel)
+
+export const FRANCIS_DM_COOLDOWN_MS = 90 * 1000   // anti-flood privé / Business : au plus 1 réponse / 90s par conversation
 
 
 // Cadrage pour les échanges PRIVÉS (mode secrétaire) : bilingue auto FR/EN
