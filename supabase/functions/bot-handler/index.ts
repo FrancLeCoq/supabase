@@ -423,21 +423,24 @@ Deno.serve(async (req) => {
       if (conn.owner_id && String(bm.from.id) === conn.owner_id) return new Response('ok')
       const connId = bm.business_connection_id
       const bChat  = bm.chat.id
+      const memKeyB = 'bm:' + bChat
+      await saveChatMemory(sb, memKeyB, 'user', bText)   // contexte immédiat (batch + mémoire)
       // Anti-flood : au plus 1 réponse / FRANCIS_DM_COOLDOWN_MS par conversation.
       if ((Date.now() - (lastFrancisReplyByChat[bChat] || 0)) <= FRANCIS_DM_COOLDOWN_MS) return new Response('ok')
-      lastFrancisReplyByChat[bChat] = Date.now()   // on arme tout de suite (les messages du burst suivant sont ignorés)
-      const memKeyB = 'bm:' + bChat
+      lastFrancisReplyByChat[bChat] = Date.now()   // on arme tout de suite
       const bg = (async () => {
         try {
-          const history = await fetchChatMemory(sb, memKeyB, 5)   // cohérence : 5 derniers messages
-          const reply = await askFrancisAI(bText, 'en', 'dm', history)   // dm = bilingue auto + redirection par langue
-          if (!reply) { lastFrancisReplyByChat[bChat] = 0; return }   // rien à dire → on relâche
+          // Laisse arriver les autres messages du burst, puis répond à L'ENSEMBLE.
           await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))  // ~1 min → plus naturel
+          const turns = await fetchChatMemory(sb, memKeyB, 10)   // cohérence : 10 derniers messages
+          let userMsg = bText, hist = turns
+          if (turns.length && turns[turns.length - 1].role === 'user') { userMsg = turns[turns.length - 1].text; hist = turns.slice(0, -1) }
+          const reply = await askFrancisAI(userMsg, 'en', 'dm', hist)   // dm = bilingue auto + redirection par langue
+          if (!reply) { lastFrancisReplyByChat[bChat] = 0; return }   // rien à dire → on relâche
           await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: reply, parse_mode: 'HTML', disable_web_page_preview: true }),
           })
-          await saveChatMemory(sb, memKeyB, 'user', bText)
           await saveChatMemory(sb, memKeyB, 'model', reply)
         } catch (e) { console.error('business_message bg:', String(e)) }
       })()
@@ -761,14 +764,18 @@ Deno.serve(async (req) => {
           const bgMsgId = messageId
           const bgText = rawText
           const bgThread = threadId
+          const grpKey = 'grp:' + chatId
           const bg = (async () => {
-            const reply = await askFrancisAI(bgText, grpLang)
+            const history = await fetchChatMemory(supabase, grpKey, 10)   // cohérence dans le groupe
+            const reply = await askFrancisAI(bgText, grpLang, 'group', history)
             if (!reply) { lastFrancisReplyByChat[chatId] = 0; return }  // rien à dire → on relâche le cooldown
             // Délai volontaire : Francis répond ~1 min après le message,
             // pour que l'échange paraisse naturel (pas instantané/robotique).
             await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
             await sendMessage(token, chatId, reply,
               { reply_to_message_id: bgMsgId, ...(bgThread ? { message_thread_id: bgThread } : {}) })
+            await saveChatMemory(supabase, grpKey, 'user', bgText)
+            await saveChatMemory(supabase, grpKey, 'model', reply)
           })()
           // Répond 200 immédiatement au webhook (sinon Telegram retente
           // l'update → doublons) tout en gardant l'isolate en vie pour la
@@ -1612,20 +1619,21 @@ Deno.serve(async (req) => {
     // UNIQUEMENT en privé, hors commande (/…), hors bouton, hors flux "coller wallet".
     if (msg.chat?.type === 'private' && !pending && rawText.length > 0
         && !rawText.startsWith('/') && !isKeyboardButton(text)) {
+      const memKey = 'dm:' + chatId
+      await saveChatMemory(supabase, memKey, 'user', rawText)   // contexte immédiat (batch + mémoire)
       // Anti-flood : au plus 1 réponse / FRANCIS_DM_COOLDOWN_MS par conversation.
       if ((Date.now() - (lastFrancisReplyByChat[chatId] || 0)) <= FRANCIS_DM_COOLDOWN_MS) return new Response('ok')
-      lastFrancisReplyByChat[chatId] = Date.now()   // armé tout de suite (burst suivant ignoré)
-      const bgDm = rawText
-      const memKey = 'dm:' + chatId
+      lastFrancisReplyByChat[chatId] = Date.now()   // armé tout de suite
       const bg = (async () => {
         try {
-          const history = await fetchChatMemory(supabase, memKey, 5)   // cohérence : 5 derniers messages
-          const reply = await askFrancisAI(bgDm, isFR ? 'fr' : 'en', 'dm', history)
-          if (!reply) { lastFrancisReplyByChat[chatId] = 0; return }   // rien à dire → on relâche
-          // Réponse différée ~1 min → échange plus naturel, moins tac-au-tac.
+          // Laisse arriver les autres messages du burst, puis répond à L'ENSEMBLE.
           await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
+          const turns = await fetchChatMemory(supabase, memKey, 10)   // cohérence : 10 derniers messages
+          let userMsg = rawText, hist = turns
+          if (turns.length && turns[turns.length - 1].role === 'user') { userMsg = turns[turns.length - 1].text; hist = turns.slice(0, -1) }
+          const reply = await askFrancisAI(userMsg, isFR ? 'fr' : 'en', 'dm', hist)
+          if (!reply) { lastFrancisReplyByChat[chatId] = 0; return }   // rien à dire → on relâche
           await sendMessage(token, chatId, reply)
-          await saveChatMemory(supabase, memKey, 'user', bgDm)
           await saveChatMemory(supabase, memKey, 'model', reply)
         } catch (e) { console.error('DM francis bg:', String(e)) }
       })()
