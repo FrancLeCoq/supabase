@@ -384,6 +384,60 @@ Deno.serve(async (req) => {
       return new Response('ok')
     }
 
+    // ══════════════════════════════════════════════════════════
+    //  TELEGRAM BUSINESS (mode "secrétaire") — le bot est connecté à
+    //  un compte Business et répond aux DM reçus par ce compte. Ces
+    //  updates ne sont PAS des update.message → gérés ici, en amont.
+    // ══════════════════════════════════════════════════════════
+    if (update.business_connection) {
+      const bc = update.business_connection
+      try {
+        const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+        const canReply = (bc.rights && typeof bc.rights.can_reply === 'boolean')
+          ? bc.rights.can_reply
+          : (typeof bc.can_reply === 'boolean' ? bc.can_reply : true)
+        await sb.from('business_connections').upsert({
+          id: bc.id,
+          owner_id: String(bc.user?.id ?? ''),
+          is_enabled: bc.is_enabled !== false,
+          can_reply: canReply,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' })
+      } catch (e) { console.error('business_connection:', String(e)) }
+      return new Response('ok')
+    }
+
+    if (update.business_message) {
+      const bm = update.business_message
+      if (!bm.from || bm.from.is_bot) return new Response('ok')
+      const bText = (bm.text || '').trim()
+      if (!bText || bText.startsWith('/')) return new Response('ok')
+      const bToken = Deno.env.get('BOT_TOKEN')!
+      const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+      const { data: conn } = await sb.from('business_connections')
+        .select('owner_id, can_reply, is_enabled').eq('id', bm.business_connection_id).single()
+      // Connexion inconnue / désactivée / sans droit de réponse → on ne répond pas.
+      if (!conn || conn.is_enabled === false || conn.can_reply === false) return new Response('ok')
+      // Anti-boucle : ne JAMAIS répondre aux messages du titulaire du compte
+      // Business (ses propres messages ET les réponses déjà envoyées par Francis).
+      if (conn.owner_id && String(bm.from.id) === conn.owner_id) return new Response('ok')
+      const connId = bm.business_connection_id
+      const bChat  = bm.chat.id
+      const bg = (async () => {
+        try {
+          const reply = await askFrancisAI(bText, 'en', 'dm')   // dm = bilingue auto + redirection par langue
+          if (!reply) return
+          await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))  // ~1 min → plus naturel
+          await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: reply, parse_mode: 'HTML', disable_web_page_preview: true }),
+          })
+        } catch (e) { console.error('business_message bg:', String(e)) }
+      })()
+      try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }
+      return new Response('ok')
+    }
+
     const msg = update.message
     if (!msg || !msg.from) return new Response('ok')
 
@@ -432,6 +486,31 @@ Deno.serve(async (req) => {
           `🏁 On it — searching and posting to <b>Cocorico Racing</b>…`))
         return new Response('ok')
       }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  /enablesecretary (OWNER) — active le mode secrétaire Business :
+    //  déclare les updates business au webhook. À lancer UNE fois, puis
+    //  reconnecter le bot dans Réglages → Business → Chatbots.
+    // ══════════════════════════════════════════════════════════
+    if (text === '/enablesecretary') {
+      if (userId !== OWNER_ID) return new Response('ok')
+      const bToken = Deno.env.get('BOT_TOKEN')!
+      try {
+        const info = await (await fetch(`https://api.telegram.org/bot${bToken}/getWebhookInfo`)).json()
+        const hookUrl = info?.result?.url
+        if (!hookUrl) { await sendMessage(bToken, chatId, '❌ Webhook URL introuvable (getWebhookInfo).'); return new Response('ok') }
+        const allowed = ['message','edited_message','callback_query','channel_post','business_connection','business_message','edited_business_message','deleted_business_messages']
+        const res = await fetch(`https://api.telegram.org/bot${bToken}/setWebhook`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: hookUrl, allowed_updates: allowed, drop_pending_updates: false }),
+        })
+        const out = await res.json()
+        await sendMessage(bToken, chatId, out?.ok
+          ? "✅ Mode secrétaire activé (updates Business déclarés au webhook).\n\n👉 Dernière étape : Réglages Telegram → Business → Chatbots → déconnecte puis reconnecte @FrancisLeCoqBot (en lui laissant le droit de répondre). Ça enregistre la connexion, et Francis répondra ensuite aux DM reçus par ton compte Business."
+          : ('❌ setWebhook a échoué : ' + JSON.stringify(out).slice(0, 250)))
+      } catch (e) { await sendMessage(bToken, chatId, '❌ Erreur : ' + String(e)) }
+      return new Response('ok')
     }
 
     // ══════════════════════════════════════════════════════════
