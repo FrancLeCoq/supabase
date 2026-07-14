@@ -100,12 +100,23 @@ export const FRANCIS_COOLDOWN_MS = 5 * 60 * 1000  // 5 minutes
 export const FRANCIS_REPLY_DELAY_MS = 60 * 1000   // Francis répond ~1 min après le message (rendu naturel)
 
 
-export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en'): Promise<string | null> {
+// Cadrage pour les échanges PRIVÉS (mode secrétaire) : bilingue auto FR/EN
+// + redirection vers le groupe correspondant à la langue de l'utilisateur.
+const DM_LANGUAGE_RULE = `\n\n### PRIVATE 1:1 CHAT (secretary mode) — LANGUAGE & REDIRECTION (overrides the group language rule above)
+- You are in a PRIVATE one-to-one chat with a member (NOT the group). Be a warm, helpful secretary-rooster: answer their question directly and usefully.
+- LANGUAGE — auto-detect: if the user writes in FRENCH, reply ENTIRELY in FRENCH; otherwise reply in ENGLISH. ONLY these two languages exist. Match the user's language on EVERY message (they can switch).
+- NEVER refuse to answer because of the language (that refuse-and-redirect rule is ONLY for the groups). Here you ALWAYS help, in the user's language.
+- GROUP REDIRECTION by language — when it's relevant to invite them to the community, send them to the group that matches THEIR language: FRENCH speakers → « Le Poulailler » (French group) https://t.me/FrancisLeCoq ; ENGLISH speakers → "The Chicken Coop" (international group) https://t.me/LeCoqFrancis .
+- Keep the same 280-character ceiling and all the other rules (safety, no financial advice, stay Francis).`
+
+export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en', mode: 'group' | 'dm' = 'group'): Promise<string | null> {
   const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) { console.error('askFrancisAI: GEMINI_API_KEY manquante'); return null }
   const model = 'gemini-3.1-flash-lite'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const sys = lang === 'fr'
+  const sys = mode === 'dm'
+    ? FRANCIS_SYSTEM_PROMPT + DM_LANGUAGE_RULE
+    : lang === 'fr'
     ? FRANCIS_SYSTEM_PROMPT + `\n\n### LANGUE — RÈGLE PRIORITAIRE (écrase toute consigne d'anglais ci-dessus)\nCe groupe est « Le Poulailler », 100% FRANCOPHONE. Tu réponds TOUJOURS et UNIQUEMENT en FRANÇAIS, quelle que soit la langue du message. Ton chaleureux, drôle, un brin chauvin et bon enfant, comme un vrai coq gaulois. Même limite : environ 280 caractères maximum.\n\n### SI LE MESSAGE N'EST PAS EN FRANÇAIS\nSi le message de l'utilisateur est écrit dans une AUTRE langue que le français (ex. anglais, espagnol...), NE réponds PAS à sa question. À la place, réponds poliment et chaleureusement — d'abord une phrase en français, puis la même en anglais — pour expliquer que « Le Poulailler » est le groupe FRANCOPHONE de Francis le Coq, et invite-le à rejoindre le groupe international « The Chicken Coop » ici : https://t.me/LeCoqFrancis`
     : FRANCIS_SYSTEM_PROMPT + `\n\n### LANGUAGE RULE\n"The Chicken Coop" is the INTERNATIONAL, English-speaking group. If the user's message is written in a language OTHER than English, do NOT answer their question. Instead, reply politely and warmly (in English) asking them to please write in English since this is the international group — and add that there is also a dedicated French-speaking group, "Le Poulailler", if they'd rather: https://t.me/FrancisLeCoq . Keep it short and friendly.`
   try {

@@ -1521,6 +1521,22 @@ Deno.serve(async (req) => {
       await sendMessage(token, chatId, tr(`❌ Adresse Solana invalide. Colle une adresse valide (32–44 caractères).`,`❌ Invalid Solana address. Please paste a valid address (32–44 characters).`))
     }
 
+    // ── SECRÉTAIRE EN PRIVÉ : Francis répond aux questions libres (1:1) ──
+    // Bilingue auto (FR/EN) + redirection vers le groupe de la langue.
+    // UNIQUEMENT en privé, hors commande (/…), hors bouton, hors flux "coller wallet".
+    if (msg.chat?.type === 'private' && !pending && rawText.length > 0
+        && !rawText.startsWith('/') && !isKeyboardButton(text)) {
+      const bgDm = rawText
+      const bg = (async () => {
+        try {
+          const reply = await askFrancisAI(bgDm, isFR ? 'fr' : 'en', 'dm')
+          if (reply) await sendMessage(token, chatId, reply)
+        } catch (e) { console.error('DM francis bg:', String(e)) }
+      })()
+      try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }
+      return new Response('ok')
+    }
+
   } catch (err) {
     console.error('bot-handler error:', String(err))
   }
