@@ -7,7 +7,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, claimReplySlot, fetchChatMemory, lastFrancisReplyByChat, saveChatMemory } from './francis-ai.ts'
+import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, buildBatchedReply, claimReplySlot, fetchChatMemory, lastFrancisReplyByChat, releaseReplySlot, saveChatMemory } from './francis-ai.ts'
 import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
@@ -427,29 +427,25 @@ Deno.serve(async (req) => {
       await saveChatMemory(sb, memKeyB, 'user', bText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
       if (isCaRequest(bText)) {
-        const bIsFR = /[àâçéèêëîïôûù]/.test(bText.toLowerCase()) || /\b(le|la|c'est|quoi|adresse|contrat|salut|bonjour|merci|envoie|donne)\b/.test(bText.toLowerCase())
-        const cp = caPayload(bIsFR)
-        try {
-          await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: cp.text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: cp.inline_keyboard } }),
-          })
-        } catch (e) { console.error('business CA:', String(e)) }
-        return new Response('ok')
+        if (await claimReplySlot(sb, memKeyB + ':ca', 30)) {
+          const bIsFR = /[àâçéèêëîïôûù]/.test(bText.toLowerCase()) || /\b(le|la|c'est|quoi|adresse|contrat|salut|bonjour|merci|envoie|donne)\b/.test(bText.toLowerCase())
+          const cp = caPayload(bIsFR)
+          try {
+            await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: cp.text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: cp.inline_keyboard } }),
+            })
+          } catch (e) { console.error('business CA:', String(e)) }
+        }
       }
-      // Verrou PARTAGÉ (DB) : une seule réponse par fenêtre, même si les messages
-      // d'une salve arrivent sur plusieurs instances de la fonction.
+      // Verrou PARTAGÉ (DB) : une seule réponse par fenêtre, même multi-instances.
       const bClaimed = await claimReplySlot(sb, memKeyB, 90)
       if (!bClaimed) return new Response('ok')
       const bg = (async () => {
         try {
-          // Laisse arriver les autres messages du burst, puis répond à L'ENSEMBLE.
-          await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))  // ~1 min → plus naturel
-          const turns = await fetchChatMemory(sb, memKeyB, 10)   // cohérence : 10 derniers messages
-          let userMsg = bText, hist = turns
-          if (turns.length && turns[turns.length - 1].role === 'user') { userMsg = turns[turns.length - 1].text; hist = turns.slice(0, -1) }
-          const reply = await askFrancisAI(userMsg, 'en', 'dm', hist)   // dm = bilingue auto + redirection par langue
-          if (!reply) return
+          await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))   // laisse arriver la salve
+          const reply = await buildBatchedReply(sb, memKeyB, 'dm', 'en')   // dm = bilingue auto + redirection par langue
+          if (!reply) { await releaseReplySlot(sb, memKeyB); return }   // CA seul / rien à ajouter
           await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: reply, parse_mode: 'HTML', disable_web_page_preview: true }),
@@ -769,30 +765,27 @@ Deno.serve(async (req) => {
             const { data: pauseRow } = await supabase.from('bot_pause').select('paused').eq('chat_id', chatId).single()
             if (pauseRow?.paused) return new Response('ok')
           } catch (_) { /* pas de ligne / table injoignable → on considère actif */ }
-          // CA impératif : réponse déterministe, dans le topic où c'est demandé.
+          const grpKey = 'grp:' + chatId
+          await saveChatMemory(supabase, grpKey, 'user', rawText)   // contexte immédiat (batch + cohérence)
+          // CA impératif : envoi déterministe dans le topic (dédup 60s).
           if (isCaRequest(rawText)) {
-            const cp = caPayload(isFR)
-            await sendMessage(token, chatId, cp.text,
-              { ...(threadId ? { message_thread_id: threadId } : {}), reply_markup: { inline_keyboard: cp.inline_keyboard } })
-            return new Response('ok')
+            if (await claimReplySlot(supabase, grpKey + ':ca', 60)) {
+              const cp = caPayload(isFR)
+              await sendMessage(token, chatId, cp.text,
+                { ...(threadId ? { message_thread_id: threadId } : {}), reply_markup: { inline_keyboard: cp.inline_keyboard } })
+            }
           }
           // Verrou PARTAGÉ (DB) : une seule réponse / 5 min, même multi-instances.
-          const grpKey = 'grp:' + chatId
           const grpClaimed = await claimReplySlot(supabase, grpKey, 300)
           if (grpClaimed) {
             const bgMsgId = messageId
-            const bgText = rawText
             const bgThread = threadId
             const bg = (async () => {
-              const history = await fetchChatMemory(supabase, grpKey, 10)   // cohérence dans le groupe
-              const reply = await askFrancisAI(bgText, grpLang, 'group', history)
-              if (!reply) return
-              // Délai volontaire : Francis répond ~1 min après le message,
-              // pour que l'échange paraisse naturel (pas instantané/robotique).
-              await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
+              await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))   // laisse arriver la salve
+              const reply = await buildBatchedReply(supabase, grpKey, 'group', grpLang)
+              if (!reply) { await releaseReplySlot(supabase, grpKey); return }
               await sendMessage(token, chatId, reply,
                 { reply_to_message_id: bgMsgId, ...(bgThread ? { message_thread_id: bgThread } : {}) })
-              await saveChatMemory(supabase, grpKey, 'user', bgText)
               await saveChatMemory(supabase, grpKey, 'model', reply)
             })()
             // 200 immédiat au webhook (sinon Telegram retente → doublons).
@@ -1639,20 +1632,18 @@ Deno.serve(async (req) => {
       const memKey = 'dm:' + chatId
       await saveChatMemory(supabase, memKey, 'user', rawText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
-      if (isCaRequest(rawText)) { await sendCA(token, chatId, isFR); return new Response('ok') }
+      if (isCaRequest(rawText)) {
+        if (await claimReplySlot(supabase, memKey + ':ca', 30)) await sendCA(token, chatId, isFR)
+      }
       // Verrou PARTAGÉ (DB) : une seule réponse par fenêtre, même si les messages
       // d'une salve arrivent sur plusieurs instances de la fonction.
       const dmClaimed = await claimReplySlot(supabase, memKey, 90)
       if (!dmClaimed) return new Response('ok')
       const bg = (async () => {
         try {
-          // Laisse arriver les autres messages du burst, puis répond à L'ENSEMBLE.
-          await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))
-          const turns = await fetchChatMemory(supabase, memKey, 10)   // cohérence : 10 derniers messages
-          let userMsg = rawText, hist = turns
-          if (turns.length && turns[turns.length - 1].role === 'user') { userMsg = turns[turns.length - 1].text; hist = turns.slice(0, -1) }
-          const reply = await askFrancisAI(userMsg, isFR ? 'fr' : 'en', 'dm', hist)
-          if (!reply) return
+          await new Promise((r) => setTimeout(r, FRANCIS_REPLY_DELAY_MS))   // laisse arriver la salve
+          const reply = await buildBatchedReply(supabase, memKey, 'dm', isFR ? 'fr' : 'en')
+          if (!reply) { await releaseReplySlot(supabase, memKey); return }   // CA seul / rien à ajouter
           await sendMessage(token, chatId, reply)
           await saveChatMemory(supabase, memKey, 'model', reply)
         } catch (e) { console.error('DM francis bg:', String(e)) }

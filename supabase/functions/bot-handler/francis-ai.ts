@@ -1,5 +1,6 @@
 // Module issu du decoupage de bot-handler (logique identique, code deplace).
 import { GAMES } from './menus.ts'
+import { isCaRequest } from './telegram.ts'
 
 export const FRANCIS_SYSTEM_PROMPT = `You are Francis, a proud and funny rooster — the living mascot of $FRANC, a community memecoin. You hang out in the project's Telegram group, "The Chicken Coop", chatting with members.
 
@@ -142,6 +143,38 @@ export async function claimReplySlot(sb: any, chatKey: string, windowSeconds: nu
     if (error) { console.error('claim_reply_slot error:', error.message); return true }
     return data === true
   } catch (e) { console.error('claim_reply_slot exception:', String(e)); return true }
+}
+
+// Relâche le créneau (après une réponse "à vide" : CA seul, ou NONE) pour ne
+// pas bloquer une vraie question qui arriverait juste après.
+export async function releaseReplySlot(sb: any, chatKey: string): Promise<void> {
+  try { await sb.from('chat_reply_lock').delete().eq('chat_key', chatKey) } catch { /* best-effort */ }
+}
+
+// Le CA a déjà été envoyé (message déterministe) : l'IA ne doit PAS le répéter.
+const CA_ALREADY_SENT_NOTE = `\n\n[SYSTEM NOTE: The official $FRANC contract addresses (SOL + TON) and the Pump.fun/Blum links have ALREADY been sent to this user in a separate message. Do NOT repeat, restate or mention the contract address, the CA, or the buy links again. Answer ONLY the user's OTHER questions. If the user asked for nothing else, reply with EXACTLY: NONE]`
+
+// Construit la réponse groupée : lit la mémoire, isole la "salve" (messages
+// utilisateur NON encore répondus, en fin de fil), et :
+//  - si la salve ne contient QUE des demandes de CA -> renvoie null (le CA a
+//    déjà été envoyé à part, rien à ajouter) ;
+//  - sinon -> répond à l'ENSEMBLE en une fois ; si du CA est dans la salve,
+//    l'IA n'en reparle pas. Renvoie null si l'IA n'a rien d'utile (NONE).
+export async function buildBatchedReply(sb: any, chatKey: string, mode: 'group' | 'dm', lang: 'en' | 'fr'): Promise<string | null> {
+  const turns = await fetchChatMemory(sb, chatKey, 10)
+  if (!turns.length || turns[turns.length - 1].role !== 'user') return null
+  // Salve = derniers tours 'user' consécutifs (depuis la fin, tant que ce n'est pas 'model').
+  const burst: ChatTurn[] = []
+  for (let i = turns.length - 1; i >= 0 && turns[i].role === 'user'; i--) burst.unshift(turns[i])
+  const caInBurst = burst.some((t) => isCaRequest(t.text))
+  const onlyCa = burst.every((t) => isCaRequest(t.text))
+  if (onlyCa) return null   // uniquement le CA -> déjà envoyé, on n'ajoute rien
+  const userMsg = turns[turns.length - 1].text + (caInBurst ? CA_ALREADY_SENT_NOTE : '')
+  const hist = turns.slice(0, -1)
+  const reply = await askFrancisAI(userMsg, lang, mode, hist)
+  if (!reply) return null
+  if (/^\s*none\b/i.test(reply)) return null
+  return reply
 }
 
 export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en', mode: 'group' | 'dm' = 'group', history: ChatTurn[] = []): Promise<string | null> {
