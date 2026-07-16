@@ -11,7 +11,7 @@ import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, as
 import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
-import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
+import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mentionsOldTestCa, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
 import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang, statusText } from './wallet.ts'
 
 Deno.serve(async (req) => {
@@ -426,10 +426,11 @@ Deno.serve(async (req) => {
       const memKeyB = 'bm:' + bChat
       await saveChatMemory(sb, memKeyB, 'user', bText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
-      if (isCaRequest(bText)) {
+      const bOldCa = mentionsOldTestCa(bText)
+      if (isCaRequest(bText) || bOldCa) {
         if (await claimReplySlot(sb, memKeyB + ':ca', 30)) {
           const bIsFR = /[àâçéèêëîïôûù]/.test(bText.toLowerCase()) || /\b(le|la|c'est|quoi|adresse|contrat|salut|bonjour|merci|envoie|donne)\b/.test(bText.toLowerCase())
-          const cp = caPayload(bIsFR)
+          const cp = caPayload(bIsFR, bOldCa)
           try {
             await fetch(`https://api.telegram.org/bot${bToken}/sendMessage`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -768,9 +769,10 @@ Deno.serve(async (req) => {
           const grpKey = 'grp:' + chatId
           await saveChatMemory(supabase, grpKey, 'user', rawText)   // contexte immédiat (batch + cohérence)
           // CA impératif : envoi déterministe dans le topic (dédup 60s).
-          if (isCaRequest(rawText)) {
+          const grpOldCa = mentionsOldTestCa(rawText)
+          if (isCaRequest(rawText) || grpOldCa) {
             if (await claimReplySlot(supabase, grpKey + ':ca', 60)) {
-              const cp = caPayload(isFR)
+              const cp = caPayload(isFR, grpOldCa)
               await sendMessage(token, chatId, cp.text,
                 { ...(threadId ? { message_thread_id: threadId } : {}), reply_markup: { inline_keyboard: cp.inline_keyboard } })
             }
@@ -1632,8 +1634,9 @@ Deno.serve(async (req) => {
       const memKey = 'dm:' + chatId
       await saveChatMemory(supabase, memKey, 'user', rawText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
-      if (isCaRequest(rawText)) {
-        if (await claimReplySlot(supabase, memKey + ':ca', 30)) await sendCA(token, chatId, isFR)
+      const dmOldCa = mentionsOldTestCa(rawText)
+      if (isCaRequest(rawText) || dmOldCa) {
+        if (await claimReplySlot(supabase, memKey + ':ca', 30)) await sendCA(token, chatId, isFR, 0, dmOldCa)
       }
       // Verrou PARTAGÉ (DB) : une seule réponse par fenêtre, même si les messages
       // d'une salve arrivent sur plusieurs instances de la fonction.

@@ -1,6 +1,6 @@
 // Module issu du decoupage de bot-handler (logique identique, code deplace).
 import { GAMES } from './menus.ts'
-import { isCaRequest } from './telegram.ts'
+import { isCaRelated } from './telegram.ts'
 
 export const FRANCIS_SYSTEM_PROMPT = `You are Francis, a proud and funny rooster — the living mascot of $FRANC, a community memecoin. You hang out in the project's Telegram group, "The Chicken Coop", chatting with members.
 
@@ -166,8 +166,8 @@ export async function buildBatchedReply(sb: any, chatKey: string, mode: 'group' 
   // Salve = derniers tours 'user' consécutifs (depuis la fin, tant que ce n'est pas 'model').
   const burst: ChatTurn[] = []
   for (let i = turns.length - 1; i >= 0 && turns[i].role === 'user'; i--) burst.unshift(turns[i])
-  const caInBurst = burst.some((t) => isCaRequest(t.text))
-  const onlyCa = burst.every((t) => isCaRequest(t.text))
+  const caInBurst = burst.some((t) => isCaRelated(t.text))
+  const onlyCa = burst.every((t) => isCaRelated(t.text))
   if (onlyCa) return null   // uniquement le CA -> déjà envoyé, on n'ajoute rien
   const userMsg = turns[turns.length - 1].text + (caInBurst ? CA_ALREADY_SENT_NOTE : '')
   const hist = turns.slice(0, -1)
