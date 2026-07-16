@@ -424,6 +424,11 @@ Deno.serve(async (req) => {
       const connId = bm.business_connection_id
       const bChat  = bm.chat.id
       const memKeyB = 'bm:' + bChat
+      // Réponses individuelles en pause (/stopbot) ? → mode secrétaire silencieux.
+      try {
+        const { data: indivPause } = await sb.from('bot_pause').select('paused').eq('chat_id', 0).single()
+        if (indivPause?.paused) return new Response('ok')
+      } catch (_) { /* pas de ligne → actif */ }
       await saveChatMemory(sb, memKeyB, 'user', bText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
       const bOldCa = mentionsOldTestCa(bText)
@@ -553,6 +558,23 @@ Deno.serve(async (req) => {
         paused
           ? `⏸️ <b>Francis mis en pause</b> dans « ${groupName} ».\nIl n'enverra plus de réponses automatiques. Tape la commande /play… pour le réactiver.`
           : `▶️ <b>Francis réactivé</b> dans « ${groupName} ».\nIl répond de nouveau aux membres.`)
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  PAUSE / REPRISE des réponses INDIVIDUELLES (DM + Business)
+    //  /stopbot · /playbot — réservé au owner, à taper dans le bot.
+    //  Clé sentinelle chat_id = 0 dans bot_pause (aucun chat réel = 0).
+    // ══════════════════════════════════════════════════════════
+    if (text === '/stopbot' || text === '/playbot') {
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement
+      const paused = text === '/stopbot'
+      await supabase.from('bot_pause')
+        .upsert({ chat_id: 0, paused, updated_at: new Date().toISOString() }, { onConflict: 'chat_id' })
+      await sendMessage(token, chatId,
+        paused
+          ? `⏸️ <b>Réponses individuelles en pause.</b>\nFrancis ne répond plus en privé (DM) ni en mode secrétaire (Business). Tape /playbot pour réactiver.`
+          : `▶️ <b>Réponses individuelles réactivées.</b>\nFrancis répond de nouveau en privé et en mode secrétaire.`)
       return new Response('ok')
     }
 
@@ -1631,6 +1653,11 @@ Deno.serve(async (req) => {
     // UNIQUEMENT en privé, hors commande (/…), hors bouton, hors flux "coller wallet".
     if (msg.chat?.type === 'private' && !pending && rawText.length > 0
         && !rawText.startsWith('/') && !isKeyboardButton(text)) {
+      // Réponses individuelles en pause (/stopbot) ? → on ne répond pas.
+      try {
+        const { data: indivPause } = await supabase.from('bot_pause').select('paused').eq('chat_id', 0).single()
+        if (indivPause?.paused) return new Response('ok')
+      } catch (_) { /* pas de ligne → actif */ }
       const memKey = 'dm:' + chatId
       await saveChatMemory(supabase, memKey, 'user', rawText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
