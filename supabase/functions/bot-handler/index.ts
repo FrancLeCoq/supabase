@@ -7,7 +7,14 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, buildBatchedReply, claimReplySlot, fetchChatMemory, lastFrancisReplyByChat, releaseReplySlot, saveChatMemory } from './francis-ai.ts'
+import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, buildBatchedReply, claimReplySlot, fetchChatMemory, isUserPaused, lastFrancisReplyByChat, releaseReplySlot, saveChatMemory } from './francis-ai.ts'
+
+// Libellé lisible d'un scope de pause par utilisateur.
+function pauseScopeLabel(scope: string): string {
+  return scope === 'poulailler' ? 'Le Poulailler'
+    : scope === 'chickencoop' ? 'The Chicken Coop'
+    : 'les échanges individuels (DM + Business)'
+}
 import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
@@ -381,6 +388,23 @@ Deno.serve(async (req) => {
           }
         }
       }
+
+      // ── Bouton de réactivation d'un utilisateur (liste /playbot…user) ──
+      if (cb.data && cb.data.startsWith('unpause:')) {
+        if (String(cbUser.id) === OWNER_ID) {
+          const parts = cb.data.split(':')          // unpause:<scope>:<username>
+          const uScope = parts[1]
+          const uName = parts.slice(2).join(':')
+          try { await cbSupa.from('user_pause').delete().eq('scope', uScope).eq('username', uName) } catch (_) { /* ok */ }
+          if (cb.message) {
+            await fetch(`https://api.telegram.org/bot${cbToken}/sendMessage`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: cb.message.chat.id, parse_mode: 'HTML',
+                text: `▶️ Francis répond de nouveau à <b>@${uName}</b> dans <b>${pauseScopeLabel(uScope)}</b>.` })
+            })
+          }
+        }
+      }
       return new Response('ok')
     }
 
@@ -429,6 +453,8 @@ Deno.serve(async (req) => {
         const { data: indivPause } = await sb.from('bot_pause').select('paused').eq('chat_id', 0).single()
         if (indivPause?.paused) return new Response('ok')
       } catch (_) { /* pas de ligne → actif */ }
+      // Utilisateur précis mis en pause (/stopbotuser) ?
+      if (await isUserPaused(sb, 'dm', bm.from.username)) return new Response('ok')
       await saveChatMemory(sb, memKeyB, 'user', bText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).
       const bOldCa = mentionsOldTestCa(bText)
@@ -576,6 +602,58 @@ Deno.serve(async (req) => {
           ? `⏸️ <b>Réponses individuelles en pause.</b>\nFrancis ne répond plus en privé (DM) ni en mode secrétaire (Business). Tape /playbot pour réactiver.`
           : `▶️ <b>Réponses individuelles réactivées.</b>\nFrancis répond de nouveau en privé et en mode secrétaire.`)
       return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  PAUSE / REPRISE par UTILISATEUR (owner, en privé)
+    //  /stopbotuser · /stopbotpoulailleruser · /stopbotchickencoopuser
+    //     → le bot demande le pseudo, puis coupe Francis pour cet user.
+    //  /playbotuser · /playbotpoulailleruser · /playbotchickencoopuser
+    //     → le bot liste les users en pause (boutons) pour réactiver.
+    // ══════════════════════════════════════════════════════════
+    if (text === '/stopbotuser' || text === '/stopbotpoulailleruser' || text === '/stopbotchickencoopuser') {
+      if (userId !== OWNER_ID) return new Response('ok')
+      const scope = text.includes('poulailler') ? 'poulailler' : text.includes('chickencoop') ? 'chickencoop' : 'dm'
+      await supabase.from('admin_pending')
+        .upsert({ owner_id: userId, action: 'stopuser:' + scope, created_at: new Date().toISOString() }, { onConflict: 'owner_id' })
+      await sendMessage(token, chatId,
+        `👤 Pour <b>${pauseScopeLabel(scope)}</b> : quel utilisateur dois-je arrêter ?\nRéponds avec son pseudo (ex. <code>@jean</code> ou <code>jean</code>).`)
+      return new Response('ok')
+    }
+
+    if (text === '/playbotuser' || text === '/playbotpoulailleruser' || text === '/playbotchickencoopuser') {
+      if (userId !== OWNER_ID) return new Response('ok')
+      const scope = text.includes('poulailler') ? 'poulailler' : text.includes('chickencoop') ? 'chickencoop' : 'dm'
+      const { data: rows } = await supabase.from('user_pause')
+        .select('username').eq('scope', scope).eq('paused', true).order('added_at')
+      if (!rows || rows.length === 0) {
+        await sendMessage(token, chatId, `✅ Aucun utilisateur en pause pour <b>${pauseScopeLabel(scope)}</b>.`)
+        return new Response('ok')
+      }
+      const kb = rows.map((r: any) => [{ text: '▶️ @' + r.username, callback_data: 'unpause:' + scope + ':' + r.username }])
+      await sendMessage(token, chatId,
+        `👤 Utilisateurs en pause pour <b>${pauseScopeLabel(scope)}</b> — touche pour réactiver :`,
+        { reply_markup: { inline_keyboard: kb } })
+      return new Response('ok')
+    }
+
+    // Owner répond au "quel utilisateur ?" (un pseudo attendu, en privé).
+    if (msg.chat?.type === 'private' && userId === OWNER_ID && rawText.length > 0 && !rawText.startsWith('/')) {
+      const { data: pend } = await supabase.from('admin_pending').select('action').eq('owner_id', userId).maybeSingle()
+      if (pend?.action && String(pend.action).startsWith('stopuser:')) {
+        const scope = String(pend.action).split(':')[1]
+        try { await supabase.from('admin_pending').delete().eq('owner_id', userId) } catch (_) { /* ok */ }
+        const uname = rawText.trim().replace(/^@/, '').toLowerCase()
+        if (!/^[a-z0-9_]{3,32}$/.test(uname)) {
+          await sendMessage(token, chatId, `❌ Pseudo invalide « ${rawText.trim()} ». Relance la commande /stopbot…user.`)
+          return new Response('ok')
+        }
+        await supabase.from('user_pause')
+          .upsert({ scope, username: uname, paused: true, added_at: new Date().toISOString() }, { onConflict: 'scope,username' })
+        await sendMessage(token, chatId,
+          `⏸️ Francis ne répondra plus à <b>@${uname}</b> dans <b>${pauseScopeLabel(scope)}</b>.\n(<code>/playbot${scope === 'poulailler' ? 'poulailler' : scope === 'chickencoop' ? 'chickencoop' : ''}user</code> pour réactiver.)`)
+        return new Response('ok')
+      }
     }
 
     // ══════════════════════════════════════════════════════════
@@ -788,6 +866,8 @@ Deno.serve(async (req) => {
             const { data: pauseRow } = await supabase.from('bot_pause').select('paused').eq('chat_id', chatId).single()
             if (pauseRow?.paused) return new Response('ok')
           } catch (_) { /* pas de ligne / table injoignable → on considère actif */ }
+          // Utilisateur précis mis en pause dans CE groupe (/stopbot…user) ?
+          if (await isUserPaused(supabase, chatId === POULAILLER_FR ? 'poulailler' : 'chickencoop', msg.from.username)) return new Response('ok')
           const grpKey = 'grp:' + chatId
           await saveChatMemory(supabase, grpKey, 'user', rawText)   // contexte immédiat (batch + cohérence)
           // CA impératif : envoi déterministe dans le topic (dédup 60s).
@@ -1658,6 +1738,8 @@ Deno.serve(async (req) => {
         const { data: indivPause } = await supabase.from('bot_pause').select('paused').eq('chat_id', 0).single()
         if (indivPause?.paused) return new Response('ok')
       } catch (_) { /* pas de ligne → actif */ }
+      // Utilisateur précis mis en pause (/stopbotuser) ?
+      if (await isUserPaused(supabase, 'dm', msg.from.username)) return new Response('ok')
       const memKey = 'dm:' + chatId
       await saveChatMemory(supabase, memKey, 'user', rawText)   // contexte immédiat (batch + mémoire)
       // CA impératif : réponse déterministe (jamais générée par l'IA → zéro erreur d'adresse).

@@ -151,6 +151,17 @@ export async function releaseReplySlot(sb: any, chatKey: string): Promise<void> 
   try { await sb.from('chat_reply_lock').delete().eq('chat_key', chatKey) } catch { /* best-effort */ }
 }
 
+// Un utilisateur précis est-il mis en pause pour ce contexte (scope) ?
+// scope: 'dm' (privé/Business) | 'poulailler' | 'chickencoop'. username sans @.
+export async function isUserPaused(sb: any, scope: string, username: string | null | undefined): Promise<boolean> {
+  if (!username) return false
+  try {
+    const { data } = await sb.from('user_pause').select('paused')
+      .eq('scope', scope).eq('username', String(username).toLowerCase()).eq('paused', true).maybeSingle()
+    return !!data
+  } catch { return false }
+}
+
 // Le CA a déjà été envoyé (message déterministe) : l'IA ne doit PAS le répéter.
 const CA_ALREADY_SENT_NOTE = `\n\n[SYSTEM NOTE: The official $FRANC contract addresses (SOL + TON) and the Pump.fun/Blum links have ALREADY been sent to this user in a separate message. Do NOT repeat, restate or mention the contract address, the CA, or the buy links again. Answer ONLY the user's OTHER questions. If the user asked for nothing else, reply with EXACTLY: NONE]`
 
