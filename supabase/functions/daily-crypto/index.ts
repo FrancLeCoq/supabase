@@ -362,10 +362,10 @@ async function generateEvening(): Promise<{ ok: boolean; text: string; reason: s
     if (b && b.toUpperCase().indexOf('NONE') !== 0) blurb = b.trim()
   }
   if (!blurb && !stockBlock && !cryptoBlock) return { ok: false, text: '', reason: 'evening: ni laius ni donnees marche' }
-  // Ordre voulu : les DONNEES d'abord (bourses puis cryptos), le laius A LA FIN.
+  // Ordre voulu : les DONNEES d'abord (cryptos puis bourses), le laius A LA FIN.
   const parts: string[] = [SLOT_HOOK.evening]
-  if (stockBlock) parts.push('', stockBlock)
   if (cryptoBlock) parts.push('', cryptoBlock)
+  if (stockBlock) parts.push('', stockBlock)
   if (blurb) parts.push('', blurb)
   // On ne JOURNALISE que le laius : le recap Crypto Night le reprend tel quel.
   const logText = blurb || 'Markets & crypto mood update this evening.'
