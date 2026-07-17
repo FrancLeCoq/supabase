@@ -150,7 +150,7 @@ async function logDailyTopic(slot: string, summary: string): Promise<void> {
 // Copie EN + CTA -> owner uniquement (pour coller sur X). Ligne vide entre
 // le recap et l'invitation : "aere et pas fondu dans le message".
 const OWNER_DM_ID = 6593812300
-const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + '🐔 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
+const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + '🐔 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
 async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
   try {
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {

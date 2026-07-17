@@ -315,7 +315,7 @@ async function markSent(jobKey: string): Promise<void> {
 
 // -- Copie owner (pour X) : message EN + CTA "rejoins le poulailler" --------
 const OWNER_DM_ID = 6593812300
-const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + "🐔 Join the Chicken Coop :" + NL + "T.me/LeCoqFrancis"
+const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + "🐔 Join the Chicken Coop :" + NL + "👉 T.me/LeCoqFrancis"
 async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
   try {
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {

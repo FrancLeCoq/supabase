@@ -34,8 +34,8 @@ const FR_CHAT_ID = -1004352289820   // Le Poulailler
 const RACING_THREAD_FR = 147
 const OWNER_ID = 6593812300         // DM du owner en cas d'echec
 // CTA ajoutee UNIQUEMENT dans la copie owner (pour coller sur X), jamais dans le post Telegram.
-const CTA_F1 = "🏎️Don't miss any F1 news." + NL + '🏁 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
-const CTA_MOTOGP = "🏍️Don't miss any MotoGP news." + NL + '🏁 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
+const CTA_F1 = "🏎️Don't miss any F1 news." + NL + '🏁 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
+const CTA_MOTOGP = "🏍️Don't miss any MotoGP news." + NL + '🏁 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
 
 // -- Reseau + Gemini -------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {

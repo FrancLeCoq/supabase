@@ -316,7 +316,7 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
 // Copie EN + CTA -> owner uniquement (pour coller sur X). Espace (ligne vide)
 // entre le recap et l'invitation : "aere et pas fondu dans le message".
 const OWNER_DM_ID = 6593812300
-const CTA_WORLD = "🌍 Don't miss any international news." + NL + '🐔 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
+const CTA_WORLD = "🌍 Don't miss any international news." + NL + '🐔 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
 async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
   try {
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
