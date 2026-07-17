@@ -11,6 +11,8 @@ export const SNAKE_URL      = 'https://t.me/FrancisLeCoqBot/ChickenSnake'   // C
 
 export const WORDSEARCH_URL = 'https://t.me/FrancisLeCoqBot/MotsMeles'
 
+export const SOLITAIRE_URL  = 'https://t.me/FrancisLeCoqBot/ChickenSolitaire'  // ChickenSolitaire (Klondike)
+
 export const SUDOKU_URL     = 'https://t.me/FrancisLeCoqBot/Sudoku'
 
 export const MASTERMIND_URL = 'https://t.me/FrancisLeCoqBot/Mastermind'
@@ -198,6 +200,25 @@ export const GAMES: Array<{
       `⏱️ <b>Free</b> — Very Easy & Easy grids\n` +
       `♾️ <b>$FRANC Holders</b> — Medium, Hard & Very Hard + Competition mode + virtual $FRANC economy\n\n` +
       `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
+  },
+  {
+    key: 'chickensolitaire',
+    label: '🃏 ChickenSolitaire',
+    playLabel: '🃏 Play ChickenSolitaire',
+    url: SOLITAIRE_URL,
+    rules:
+      `🃏 <b>CHICKEN SOLITAIRE — Le Coq Francis</b>\n\n` +
+      `Classic Klondike solitaire in Francis' universe — flip, stack and clear all four foundations! 🐓\n\n` +
+      `📋 <b>Rules:</b>\n` +
+      `♠️ Build the <b>4 foundations</b> up by suit, from Ace to King\n` +
+      `🎨 Stack the tableau <b>down in alternating colours</b> — only Kings go on empty columns\n` +
+      `👆 <b>Tap</b> a card to select, tap where to move it — <b>double-tap</b> to auto-send to a foundation\n` +
+      `🔄 Tap the stock to draw / recycle\n` +
+      `🎆 Fill all four foundations → festive win screen with Francis!\n\n` +
+      `💎 <b>Trial vs $FRANC Holder:</b>\n` +
+      `⏱️ <b>Free</b> — Draw 1 card mode\n` +
+      `♾️ <b>$FRANC Holders</b> — Draw 3 cards mode + 3 hints per game + best score & time\n\n` +
+      `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
   }
 ]
 
@@ -232,7 +253,8 @@ export const RULES_MENU_TEXT =
   `🧩 <b>Sudoku</b> — Solve. Compete. Earn.\n` +
   `🎯 <b>Mastermind</b> — Crack the code\n` +
   `🟢 <b>Motus</b> — Guess the hidden word\n` +
-  `🔍 <b>Words searches</b> — Spot. Circle. Score.\n\n` +
+  `🔍 <b>Words searches</b> — Spot. Circle. Score.\n` +
+  `🃏 <b>ChickenSolitaire</b> — Flip. Stack. Win.\n\n` +
   `<i>Tap a game to see its full rules — then play! 🐓</i>`
 
 // ── Libellés de boutons bilingues ─────────────────────────────
@@ -257,6 +279,7 @@ export const BTN = {
   langEn:    { fr: '🇬🇧 English',              en: '🇬🇧 English' },
   snake:     { fr: '🐍 ChickenSnake',          en: '🐍 ChickenSnake' },
   wordsearch:{ fr: '🔍 Words searches',        en: '🔍 Words searches' },
+  chickensolitaire:{ fr: '🃏 ChickenSolitaire', en: '🃏 ChickenSolitaire' },
   holders:   { fr: '🔞 Réservé Holders ou ⭐ (Soon ❤️‍🔥)',  en: '🔞 Only for Holders or ⭐ (Soon ❤️‍🔥)' },
   refresh:   { fr: '🔄 Rafraîchir le menu',    en: '🔄 Refresh menu' },
   rules:     { fr: '📜 Règles des jeux',       en: '📜 Game Rules' },
@@ -288,7 +311,7 @@ export function buildKeyboard(isFR: boolean) {
       [L('motus'),      L('mastermind')],
       [L('eggclicker'), L('sudoku')],
       [L('francrun'),   L('ormuz')],
-      [L('wordsearch')],
+      [L('wordsearch'), L('chickensolitaire')],
       [L('refresh'),    L('rules')],
       [L('holders')],
       [L('francTon'),   L('francSol')],
@@ -311,7 +334,7 @@ export function buildInlineMenu(isFR: boolean) {
     [{ text: L('motus'), url: MOTUS_URL }, { text: L('mastermind'), url: MASTERMIND_URL }],
     [{ text: L('eggclicker'), url: EGGCLICKER_URL }, { text: L('sudoku'), url: SUDOKU_URL }],
     [{ text: L('francrun'), url: FRANCRUN_URL }, { text: L('ormuz'), url: ORMUZ_URL }],
-    [{ text: L('wordsearch'), url: WORDSEARCH_URL }],
+    [{ text: L('wordsearch'), url: WORDSEARCH_URL }, { text: L('chickensolitaire'), url: SOLITAIRE_URL }],
     [{ text: L('refresh'), callback_data: 'start' }, { text: L('rules'), callback_data: 'rules_menu' }],
     [{ text: L('holders'), callback_data: 'holders' }],
     [{ text: L('francTon'), url: BUY_FRANC_TON_URL }, { text: L('francSol'), url: BUY_FRANC_SOL_URL }],

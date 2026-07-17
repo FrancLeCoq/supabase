@@ -15,7 +15,7 @@ function pauseScopeLabel(scope: string): string {
     : scope === 'chickencoop' ? 'The Chicken Coop'
     : 'les échanges individuels (DM + Business)'
 }
-import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
+import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SOLITAIRE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
 import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mentionsOldTestCa, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
@@ -951,14 +951,15 @@ Deno.serve(async (req) => {
         `🎯 <b>Mastermind</b> — Crack the code\n` +
         `🟢 <b>Motus</b> — Guess the hidden word\n` +
         `🐍 <b>ChickenSnake</b> — Slither. Gobble. Grow.\n` +
-        `🔍 <b>Words searches</b> — Spot. Circle. Score.`,
+        `🔍 <b>Words searches</b> — Spot. Circle. Score.\n` +
+        `🃏 <b>ChickenSolitaire</b> — Flip. Stack. Win.`,
         [
           [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
           [{ text: '🔫 FrancRun', url: FRANCRUN_URL }, { text: '⛵ Ormuz', url: ORMUZ_URL }],
           [{ text: '🎯 Mastermind', url: MASTERMIND_URL }, { text: '🧩 Sudoku', url: SUDOKU_URL }],
           [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
-          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }],
+          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }]
         ]
       )
@@ -973,14 +974,15 @@ Deno.serve(async (req) => {
         `🎯 <b>Mastermind</b> — Casse le code\n` +
         `🟢 <b>Motus</b> — Devine le mot caché\n` +
         `🐍 <b>ChickenSnake</b> — Rampe. Gobe. Grandis.\n` +
-        `🔍 <b>Words searches</b> — Repère. Entoure. Score.`,
+        `🔍 <b>Words searches</b> — Repère. Entoure. Score.\n` +
+        `🃏 <b>ChickenSolitaire</b> — Retourne. Empile. Gagne.`,
         [
           [{ text: '🐔 Tous les jeux & univers Francis', url: MENU_DEEPLINK }],
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
           [{ text: '🔫 FrancRun', url: FRANCRUN_URL }, { text: '⛵ Ormuz', url: ORMUZ_URL }],
           [{ text: '🎯 Mastermind', url: MASTERMIND_URL }, { text: '🧩 Sudoku', url: SUDOKU_URL }],
           [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
-          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }],
+          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
           [{ text: '📜 Règles des jeux', url: RULES_DEEPLINK }]
         ]
       )
