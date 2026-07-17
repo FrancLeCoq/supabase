@@ -138,14 +138,18 @@ async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
 }
 
 // -- Journal anti-doublon (slots wr_*) -------------------------
-async function fetchTodayWorldTopics(): Promise<string[]> {
+// sinceHours: fenêtre glissante (ex. 36h) pour l'anti-doublon ; sans argument,
+// on garde la JOURNÉE civile (utilisé par le bilan du soir).
+async function fetchTodayWorldTopics(sinceHours?: number): Promise<string[]> {
   const url = Deno.env.get('SUPABASE_URL')
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key) return []
   try {
-    const today = new Date().toISOString().slice(0, 10)
+    const filter = (sinceHours && sinceHours > 0)
+      ? 'created_at=gte.' + encodeURIComponent(new Date(Date.now() - sinceHours * 3600 * 1000).toISOString())
+      : 'day=eq.' + new Date().toISOString().slice(0, 10)
     const res = await tfetch(
-      url + '/rest/v1/daily_news_log?day=eq.' + today + '&slot=like.wr_*&select=summary&order=created_at',
+      url + '/rest/v1/daily_news_log?' + filter + '&slot=like.wr_*&select=summary&order=created_at',
       { headers: { apikey: key, Authorization: 'Bearer ' + key } },
     )
     if (!res.ok) return []
@@ -179,7 +183,7 @@ function splitAccroche(s: string): string {
 // == RUBRIQUES (wr_morning..wr_evening) ========================
 function searchPromptWorld(def: WDef, covered: string[]): string {
   const dedup = covered.length
-    ? NL + "DEJA COUVERT AUJOURD'HUI (ci-dessous). Choisis un SUJET VRAIMENT DIFFERENT : PAS le meme evenement/pays/dossier sous un autre angle, PAS une simple evolution de ces sujets. Change de sujet." + NL + covered.map((s) => '- ' + s).join(NL) + NL
+    ? NL + "DEJA COUVERT SUR LES 36 DERNIERES HEURES (ci-dessous). Prefere FORTEMENT un SUJET VRAIMENT DIFFERENT (autre evenement/pays/dossier, pas le meme sous un autre angle). Tu ne peux revenir sur l'un de ces sujets QUE s'il y a un developpement SIGNIFICATIF et VRAIMENT NOUVEAU depuis. Sinon, ne le repete pas." + NL + covered.map((s) => '- ' + s).join(NL) + NL
     : ''
   return [
     "Tu es un chercheur d'actualité pour une chaîne Telegram grand public FRANCOPHONE.",
@@ -217,7 +221,7 @@ function formatPromptWorld(facts: string): string {
 
 async function generateWorld(slot: WSlot): Promise<{ ok: boolean; frText: string; reason: string }> {
   const def = WORLD[slot]
-  const covered = await fetchTodayWorldTopics()
+  const covered = await fetchTodayWorldTopics(36)   // anti-doublon sur 36h glissantes
   const facts = await groundedSearch(searchPromptWorld(def, covered))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape A: pas d actu' }
   const msg = await formatCall(formatPromptWorld(facts))

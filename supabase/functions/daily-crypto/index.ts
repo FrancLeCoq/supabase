@@ -113,14 +113,18 @@ async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
 }
 
 // -- Journal anti-doublon (daily_news_log) ---------------------
-async function fetchTodayTopics(): Promise<string[]> {
+// sinceHours: fenêtre glissante (ex. 36h) pour l'anti-doublon ; sans argument,
+// on garde la JOURNÉE civile (utilisé par le récap du soir).
+async function fetchTodayTopics(sinceHours?: number): Promise<string[]> {
   const url = Deno.env.get('SUPABASE_URL')
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key) return []
   try {
-    const today = new Date().toISOString().slice(0, 10)
+    const filter = (sinceHours && sinceHours > 0)
+      ? 'created_at=gte.' + encodeURIComponent(new Date(Date.now() - sinceHours * 3600 * 1000).toISOString())
+      : 'day=eq.' + new Date().toISOString().slice(0, 10)
     const res = await tfetch(
-      url + '/rest/v1/daily_news_log?day=eq.' + today + '&slot=in.(morning,midday,evening)&select=summary&order=created_at',
+      url + '/rest/v1/daily_news_log?' + filter + '&slot=in.(morning,midday,evening)&select=summary&order=created_at',
       { headers: { apikey: key, Authorization: 'Bearer ' + key } },
     )
     if (!res.ok) return []
@@ -185,7 +189,7 @@ function splitAccroche(s: string): string {
 // == ACTU CRYPTO (morning / midday / evening) ==================
 function searchPromptNews(coveredToday: string[]): string {
   const dedup = coveredToday.length
-    ? NL + 'ALREADY COVERED EARLIER TODAY (below). Pick a genuinely DIFFERENT SUBJECT: NOT the same event/company/institution from another angle, NOT a follow-up on these. For example, if an SEC/regulation story was already covered today, do NOT report more SEC/regulation news — choose a different subject entirely.' + NL + coveredToday.map((s) => '- ' + s).join(NL) + NL
+    ? NL + 'ALREADY COVERED IN THE LAST 36 HOURS (below). Strongly PREFER a genuinely DIFFERENT SUBJECT (different event/company/institution, not the same one from another angle). You may revisit one of these subjects ONLY if there is a SIGNIFICANT, GENUINELY NEW development on it since it was covered — otherwise do NOT repeat it. Example: if an SEC/regulation story is listed, avoid more SEC/regulation news unless something genuinely new just happened.' + NL + coveredToday.map((s) => '- ' + s).join(NL) + NL
     : ''
   return [
     'You are a crypto news researcher for the $FRANC community.',
@@ -222,7 +226,7 @@ function formatPromptNews(facts: string): string {
 }
 
 async function generateNews(slot: Slot): Promise<{ ok: boolean; text: string; reason: string }> {
-  const coveredToday = await fetchTodayTopics()
+  const coveredToday = await fetchTodayTopics(36)   // anti-doublon sur 36h glissantes
   const facts = await groundedSearch(searchPromptNews(coveredToday))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, text: '', reason: 'étape A: pas d actu (facts=' + facts.slice(0, 60) + ')' }
   const msg = await formatCall(formatPromptNews(facts))
