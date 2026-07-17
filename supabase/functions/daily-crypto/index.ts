@@ -259,7 +259,7 @@ function fmtPct(p: number): string {
   return (p >= 0 ? '🟢 ' : '🔴 ') + s
 }
 
-// -- 5 plus grandes places boursieres mondiales (Yahoo Finance) --
+// -- Grandes places boursieres mondiales (Yahoo Finance) --------
 interface IdxDef { sym: string; label: string; flag: string }
 const STOCK_INDICES: IdxDef[] = [
   { sym: '%5EGSPC', label: 'S&P 500', flag: '🇺🇸' },        // Wall Street (NYSE)
@@ -267,6 +267,7 @@ const STOCK_INDICES: IdxDef[] = [
   { sym: '%5ESTOXX50E', label: 'Euro Stoxx 50', flag: '🇪🇺' }, // Euronext / zone euro
   { sym: '%5EN225', label: 'Nikkei 225', flag: '🇯🇵' },     // Tokyo
   { sym: '000001.SS', label: 'Shanghai', flag: '🇨🇳' },     // Shanghai
+  { sym: '%5EFCHI', label: 'CAC 40', flag: '🇫🇷' },         // Paris
 ]
 async function fetchIndexPct(def: IdxDef): Promise<string | null> {
   try {
@@ -289,22 +290,38 @@ async function fetchStockBlock(): Promise<string> {
   return '📊 World stock markets right now:' + NL + lines.join(NL)
 }
 
-// -- 5 plus grosses cryptos (CoinGecko, variation 24h) ----------
+// -- Liste FIXE de 6 cryptos (CoinGecko, variation 24h) ---------
+// Liste choisie a la main (pas le top marketcap) pour EXCLURE les
+// stablecoins, dont la variation ~0% ne fait pas serieux. "GRAM" =
+// libelle demande par le owner, donnees = Toncoin (the-open-network).
+interface CoinDef { id: string; sym: string }
+const CRYPTO_LIST: CoinDef[] = [
+  { id: 'bitcoin', sym: 'BTC' },
+  { id: 'ethereum', sym: 'ETH' },
+  { id: 'binancecoin', sym: 'BNB' },
+  { id: 'ripple', sym: 'XRP' },
+  { id: 'solana', sym: 'SOL' },
+  { id: 'the-open-network', sym: 'GRAM' },
+]
 async function fetchCryptoBlock(): Promise<string> {
   try {
-    const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=5&page=1&price_change_percentage=24h'
+    const ids = CRYPTO_LIST.map((c) => c.id).join(',')
+    const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=' + ids + '&price_change_percentage=24h'
     const res = await tfetch(url, {}, 8000)
     if (!res.ok) return ''
     const rows = await res.json()
     if (!Array.isArray(rows) || !rows.length) return ''
-    const lines = rows.map((c: any) => {
-      const sym = String((c && c.symbol) || '').toUpperCase()
-      const p = Number(c && c.price_change_percentage_24h)
-      if (!sym || !isFinite(p)) return ''
-      return '• ' + sym + ': ' + fmtPct(p)
+    const pctById: Record<string, number> = {}
+    for (const r of rows) { if (r && r.id) pctById[String(r.id)] = Number(r.price_change_percentage_24h) }
+    // On garde NOTRE ordre (BTC, ETH, BNB, XRP, SOL, GRAM) et on saute
+    // proprement toute crypto dont la variation n'a pas ete recuperee.
+    const lines = CRYPTO_LIST.map((c) => {
+      const p = pctById[c.id]
+      if (!isFinite(p)) return ''
+      return '• ' + c.sym + ': ' + fmtPct(p)
     }).filter(Boolean)
     if (!lines.length) return ''
-    return '🪙 Top 5 crypto (24h):' + NL + lines.join(NL)
+    return '🪙 Top 6 crypto (24h):' + NL + lines.join(NL)
   } catch { return '' }
 }
 
@@ -345,10 +362,11 @@ async function generateEvening(): Promise<{ ok: boolean; text: string; reason: s
     if (b && b.toUpperCase().indexOf('NONE') !== 0) blurb = b.trim()
   }
   if (!blurb && !stockBlock && !cryptoBlock) return { ok: false, text: '', reason: 'evening: ni laius ni donnees marche' }
+  // Ordre voulu : les DONNEES d'abord (bourses puis cryptos), le laius A LA FIN.
   const parts: string[] = [SLOT_HOOK.evening]
-  if (blurb) parts.push('', blurb)
   if (stockBlock) parts.push('', stockBlock)
   if (cryptoBlock) parts.push('', cryptoBlock)
+  if (blurb) parts.push('', blurb)
   // On ne JOURNALISE que le laius : le recap Crypto Night le reprend tel quel.
   const logText = blurb || 'Markets & crypto mood update this evening.'
   return { ok: true, text: parts.join(NL), reason: '', logText }
