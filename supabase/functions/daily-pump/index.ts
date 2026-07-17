@@ -142,7 +142,8 @@ async function francMcBlock(): Promise<string> {
 
 // -- Coin gagnant + detail (CoinGecko) -------------------------
 interface Coin { id: string; name: string; symbol: string; rank: number; change: number }
-async function fetchTop500Gainer(): Promise<{ coin: Coin | null; reason: string }> {
+// kind 'pump' -> plus gros GAGNANT 24h ; 'dump' -> plus grosse PERTE 24h.
+async function fetchTopMover(kind: 'pump' | 'dump'): Promise<{ coin: Coin | null; reason: string }> {
   const key = Deno.env.get('COINGECKO_API_KEY')
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (key) headers['x-cg-demo-api-key'] = key
@@ -157,12 +158,13 @@ async function fetchTop500Gainer(): Promise<{ coin: Coin | null; reason: string 
       const change = Number(c && (c.price_change_percentage_24h_in_currency != null ? c.price_change_percentage_24h_in_currency : c.price_change_percentage_24h))
       const rank = Number(c && c.market_cap_rank)
       if (!isFinite(change) || !rank || rank > 500) continue
-      if (change > 500) continue
+      if (kind === 'pump' && change > 500) continue     // anomalie de pump (donnee aberrante)
+      if (kind === 'dump' && change < -95) continue      // quasi-mort / delisting -> on ignore
       coins.push({ id: String((c && c.id) || ''), name: String((c && c.name) || ''), symbol: String((c && c.symbol) || '').toUpperCase(), rank, change })
     }
   }
   if (coins.length === 0) return { coin: null, reason: 'aucune donnee exploitable' }
-  coins.sort((a, b) => b.change - a.change)
+  coins.sort((a, b) => kind === 'dump' ? a.change - b.change : b.change - a.change)
   return { coin: coins[0], reason: '' }
 }
 interface CoinDetail { chain: string; description: string; categories: string }
@@ -186,14 +188,18 @@ async function fetchCoinDetail(id: string): Promise<CoinDetail> {
 }
 
 // -- Catalyst grounded + Chain/Project -------------------------
-async function groundedCatalyst(coin: Coin): Promise<string> {
+async function groundedCatalyst(coin: Coin, kind: 'pump' | 'dump'): Promise<string> {
+  const dir = kind === 'dump' ? 'down' : 'up'
+  const suspicious = kind === 'dump'
+    ? 'a sell-off, a large token unlock, an exploit/hack, bad news, delisting, or a coordinated dump'
+    : 'a coordinated pump, wash trading, dump-and-pump, or an unexplained spike with no fundamental news'
   const prompt = [
-    coin.name + ' ($' + coin.symbol + ') is up about ' + coin.change.toFixed(0) + '% over the last 24h.',
-    'Use Google Search (recent news AND X / Twitter posts) to find the MOST LIKELY reason for this move.',
+    coin.name + ' ($' + coin.symbol + ') is ' + dir + ' about ' + Math.abs(coin.change).toFixed(0) + '% over the last 24h.',
+    'Use Google Search (recent news AND X / Twitter posts) to find the MOST LIKELY reason for this ' + (kind === 'dump' ? 'drop' : 'move') + '.',
     'Write ONE single line (max ~120 characters), the reason only - NO "Catalyst:" label, no emoji, no quotes.',
     'RULES:',
     '- Base it on what people/outlets are actually saying right now.',
-    '- If the chatter/data points to artificial or suspicious activity (coordinated pump, wash trading, dump-and-pump, or an unexplained spike with no fundamental news), say so plainly and neutrally.',
+    '- If the chatter/data points to artificial or suspicious activity (' + suspicious + '), say so plainly and neutrally.',
     '- Stay factual and neutral. No hype, no price predictions, no financial advice, never say "buy/sell/moon".',
     '- If nothing credible explains it, output EXACTLY: Broad market momentum, no single clear catalyst.',
     'Output ONLY that one line.',
@@ -226,16 +232,19 @@ async function chainProject(coin: Coin, detail: CoinDetail): Promise<string> {
   return '⛓️ Chain: Established crypto asset' + NL + '🧩 Project: A top-500 crypto project'
 }
 
-async function generatePump(): Promise<{ ok: boolean; text: string; reason: string }> {
-  const { coin, reason } = await fetchTop500Gainer()
-  if (!coin) return { ok: false, text: '', reason: '[Cocorico Pump] ' + reason }
+async function generateMove(kind: 'pump' | 'dump'): Promise<{ ok: boolean; text: string; reason: string }> {
+  const { coin, reason } = await fetchTopMover(kind)
+  if (!coin) return { ok: false, text: '', reason: '[Cocorico ' + (kind === 'dump' ? 'Dump' : 'Pump') + '] ' + reason }
   const detail = await fetchCoinDetail(coin.id)
-  const [cp, catalyst, franc] = await Promise.all([chainProject(coin, detail), groundedCatalyst(coin), francMcBlock()])
+  const [cp, catalyst, franc] = await Promise.all([chainProject(coin, detail), groundedCatalyst(coin, kind), francMcBlock()])
   const descriptif = cp + NL + '🚀 Catalyst: ' + catalyst
   const pct = (coin.change >= 0 ? '+' : '') + coin.change.toFixed(1) + '%'
-  const text = '🐓 Cocorico Pump 🚀' + NL + NL +
-    'Biggest gainer in the Top 500 on the last 24h:' + NL +
-    coin.name + ' ($' + coin.symbol + ') ' + pct + ' 📈' + NL + NL +
+  const header = kind === 'dump' ? '🐓 Cocorico Dump 📉' : '🐓 Cocorico Pump 🚀'
+  const line = kind === 'dump' ? 'Biggest loser in the Top 500 on the last 24h:' : 'Biggest gainer in the Top 500 on the last 24h:'
+  const arrow = kind === 'dump' ? '🔻' : '📈'
+  const text = header + NL + NL +
+    line + NL +
+    coin.name + ' ($' + coin.symbol + ') ' + pct + ' ' + arrow + NL + NL +
     descriptif + NL + NL +
     'And $FRANC?' + NL + 'Its cocorico is coming. 🐓🚀' + NL + NL +
     franc
@@ -248,7 +257,7 @@ async function translateToFrench(text: string): Promise<string> {
     'RULES:',
     '- Keep ALL emojis exactly where they are, and keep the same line breaks / layout.',
     '- Do NOT translate or alter: "$FRANC", ticker symbols, numbers, %, prices, URLs, coin/person/product names.',
-    '- Keep "Cocorico Pump" as is. Translate the labels "Chain/Project/Catalyst" to "Chaine/Projet/Catalyseur".',
+    '- Keep "Cocorico Pump" and "Cocorico Dump" as is. Translate the labels "Chain/Project/Catalyst" to "Chaine/Projet/Catalyseur".',
     '- Natural French. Output ONLY the translated message, nothing else.',
     '',
     'MESSAGE:',
@@ -259,9 +268,10 @@ async function translateToFrench(text: string): Promise<string> {
 
 // -- Telegram + bandeau ----------------------------------------
 const IMG_BASE = 'https://mubqtnqulpyehkgubhnh.supabase.co/storage/v1/object/public/assets/'
-function imageUrl(): string {
+function imageUrl(kind: 'pump' | 'dump'): string {
   const v = new Date().toISOString().slice(0, 10)
-  return IMG_BASE + encodeURIComponent('Cocorico Pump.png') + '?v=' + v
+  const file = kind === 'dump' ? 'Cocorico Dump.png' : 'Cocorico Pump.png'
+  return IMG_BASE + encodeURIComponent(file) + '?v=' + v
 }
 async function postToGroup(token: string, chatId: number, text: string, threadId = 0): Promise<void> {
   const body: any = { chat_id: chatId, text, disable_web_page_preview: true }
@@ -283,8 +293,8 @@ async function postPhoto(token: string, chatId: number, photoUrl: string, captio
     return true
   } catch (e) { console.error('postPhoto exception', String(e)); return false }
 }
-async function sendWithBanner(token: string, chatId: number, text: string, threadId: number): Promise<void> {
-  const ok = await postPhoto(token, chatId, imageUrl(), text, threadId)
+async function sendWithBanner(token: string, chatId: number, text: string, threadId: number, kind: 'pump' | 'dump'): Promise<void> {
+  const ok = await postPhoto(token, chatId, imageUrl(kind), text, threadId)
   if (!ok) await postToGroup(token, chatId, text, threadId)
 }
 
@@ -314,21 +324,27 @@ Deno.serve(async (req: Request) => {
 
   let dryRun = false
   let slot = 'daily-fact-pump'   // le cron passe {"slot":"daily-fact-pump-morning|daily-fact-pump"}
-  try { const body = await req.json(); if (body && body.dryRun === true) dryRun = true; if (body && typeof body.slot === 'string') slot = body.slot } catch { /* ok */ }
+  let kind: 'pump' | 'dump' = 'pump'   // matin = dump, après-midi = pump
+  try {
+    const body = await req.json()
+    if (body && body.dryRun === true) dryRun = true
+    if (body && typeof body.slot === 'string') slot = body.slot
+    if (body && body.kind === 'dump') kind = 'dump'
+  } catch { /* ok */ }
 
   if (dryRun) {
-    const r = await generatePump()
-    return new Response(JSON.stringify({ ok: r.ok, reason: r.reason, length: r.text.length, text: r.text }, null, 2),
+    const r = await generateMove(kind)
+    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: r.text.length, text: r.text }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   const bg = (async () => {
     try {
-      const result = await generatePump()
+      const result = await generateMove(kind)
       if (!result.ok) { console.error('daily-pump echec:', result.reason); return }
-      await sendWithBanner(botToken, chatId, result.text, CRYPTO_THREAD_EN)     // EN -> Crypto Coop
+      await sendWithBanner(botToken, chatId, result.text, CRYPTO_THREAD_EN, kind)     // EN -> Crypto Coop
       const fr = await translateToFrench(result.text)
-      if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr, FR_THREAD_CRYPTO)   // FR -> Crypto Cocorico
+      if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr, FR_THREAD_CRYPTO, kind)   // FR -> Crypto Cocorico
       else console.error('daily-pump: traduction FR vide')
       await markSent(slot)
       console.log('daily-pump poste:', result.text.slice(0, 80))

@@ -1079,7 +1079,7 @@ Deno.serve(async (req) => {
         `Non-stop crypto news, decoded for everyone: the biggest market moves, regulation, ETFs, hacks and adoption — plus a daily "Cocorico Pump" spotlight on the top 24h gainer, and an end-of-day wrap. 🐓\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
         `👉 07:55 — GM / Morning\n` +
-        `👉 09:45 — 🚀 Cocorico Pump\n` +
+        `👉 09:45 — 📉 Cocorico Dump\n` +
         `👉 12:30 — Midday\n` +
         `👉 17:05 — 🚀 Cocorico Pump\n` +
         `👉 18:55 — Evening\n` +
@@ -1091,7 +1091,7 @@ Deno.serve(async (req) => {
         `L'actu crypto en continu, décryptée pour tous : les gros mouvements de marché, la régulation, les ETF, les hacks et l'adoption — plus un « Cocorico Pump » quotidien sur le plus gros gagnant 24h, et un récap de fin de journée. 🐓\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
         `👉 07:55 — GM / Matin\n` +
-        `👉 09:45 — 🚀 Cocorico Pump\n` +
+        `👉 09:45 — 📉 Cocorico Dump\n` +
         `👉 12:30 — Midi\n` +
         `👉 17:05 — 🚀 Cocorico Pump\n` +
         `👉 18:55 — Soir\n` +

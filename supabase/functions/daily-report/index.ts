@@ -39,7 +39,7 @@ const GROUPS: Group[] = [
     title: '🪙 Crypto',
     items: [
       ['franc-gm', '07:55 Morning'],
-      ['daily-fact-pump-morning', '09:45 Pump'],
+      ['daily-fact-pump-morning', '09:45 Dump'],
       ['franc-crypto-midi', '12:30 Midday'],
       ['daily-fact-pump', '17:05 Pump'],
       ['franc-news', '18:55 Evening'],

@@ -1,0 +1,3 @@
+-- Créneau matin (09:45 Paris) : Cocorico Pump -> Cocorico DUMP (plus grosse
+-- perte du Top 500 / 24h). Après-midi (17:05) reste un Pump. Appliqué via
+-- cron.schedule : body {"slot":"daily-fact-pump-morning","kind":"dump"}.
