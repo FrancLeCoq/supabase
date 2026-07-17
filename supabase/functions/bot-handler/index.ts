@@ -1226,6 +1226,17 @@ Deno.serve(async (req) => {
       return new Response('ok')
     }
 
+    if (btnIs(text, 'chickensolitaire')) {
+      await sendMessage(token, chatId,
+        tr(`🃏 <b>CHICKEN SOLITAIRE</b>\nRetourne. Empile. Gagne. — le solitaire Klondike à l'effigie de Francis ! 🐔`,
+           `🃏 <b>CHICKEN SOLITAIRE</b>\nFlip. Stack. Win. — the classic Klondike solitaire in Francis' universe! 🐔`),
+        { reply_markup: { inline_keyboard: [
+          [{ text: tr('🃏 Jouer à ChickenSolitaire','🃏 Play ChickenSolitaire'), url: SOLITAIRE_URL }]
+        ]}}
+      )
+      return new Response('ok')
+    }
+
     if (btnIs(text, 'snake')) {
       await sendMessage(token, chatId,
         tr(`🐍 <b>CHICKEN SNAKE</b>\nGuide le serpent, gobe les œufs et bats ton record ! 🐔`,
