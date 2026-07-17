@@ -33,6 +33,9 @@ const RACING_THREAD_EN = 1631
 const FR_CHAT_ID = -1004352289820   // Le Poulailler
 const RACING_THREAD_FR = 147
 const OWNER_ID = 6593812300         // DM du owner en cas d'echec
+// CTA ajoutee UNIQUEMENT dans la copie owner (pour coller sur X), jamais dans le post Telegram.
+const CTA_F1 = "🏎️Don't miss any F1 news." + NL + '🏁 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
+const CTA_MOTOGP = "🏍️Don't miss any MotoGP news." + NL + '🏁 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
 
 // -- Reseau + Gemini -------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -114,7 +117,7 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
       + '(3) A blank line, then a header line exactly "🏆 World Championship". '
       + '(4) Then the FULL current standings from the facts, ONE line per driver/rider IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣, 1️⃣2️⃣), formatted EXACTLY like this: "' + standingsFmt + '". '
       + 'Keep the exact order, names, teams and points from the facts. Make it clear this is ' + sportShort + '. NO 280-character limit here.',
-    news: 'Write the freshest paddock news as 2 to 4 short punchy bullet points (start each with -). Keep it factual. Max ~500 characters.',
+    news: 'Write the freshest paddock news as 3 to 5 short punchy bullet points. Each bullet MUST start with "👉 " and be a single sentence. Separate EACH bullet with a BLANK LINE (an empty line between bullets, so they are airy and never glued together). Keep it factual. Max ~600 characters.',
   }
   return [
     'You are Francis the rooster, a witty motorsport reporter for a Telegram community.',
@@ -137,11 +140,11 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
 
 const HOOK_EN: Record<RType, string> = {
   essais: 'Practice highlights', qualifs: 'Qualifying', qualifssprint: 'Sprint Qualifying',
-  sprint: 'Sprint race', course: 'Race', we: 'Next race weekend', news: 'Paddock buzz',
+  sprint: 'Sprint race', course: 'Race', we: 'Next race weekend', news: 'Paddock buzz 🏁 :',
 }
 const HOOK_FR: Record<RType, string> = {
   essais: 'Essais : temps forts', qualifs: 'Qualifications', qualifssprint: 'Qualifs Sprint',
-  sprint: 'Course Sprint', course: 'Course', we: 'Prochain week-end', news: 'Potins du paddock',
+  sprint: 'Course Sprint', course: 'Course', we: 'Prochain week-end', news: 'Potins du paddock 🏁 :',
 }
 
 // -- Telegram --------------------------------------------------
@@ -194,8 +197,11 @@ async function runCommand(token: string, command: string): Promise<void> {
   // EN -> The Chicken Coop (1631)
   const en = await formatCall(formatPrompt('English', sportShort, type, facts))
   if (en && en.toUpperCase().indexOf('NONE') !== 0) {
-    const idEn = await post(token, COOP_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en, RACING_THREAD_EN)
+    const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en
+    const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN)
     if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
+    // Copie EN + CTA -> owner (pour coller sur X). CTA jamais dans le post Telegram.
+    await dmOwner(token, enMsg + NL + NL + (isF1 ? CTA_F1 : CTA_MOTOGP))
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
   // FR -> Le Poulailler (147)

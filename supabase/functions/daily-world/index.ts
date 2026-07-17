@@ -313,6 +313,19 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
   }
 }
 
+// Copie EN + CTA -> owner uniquement (pour coller sur X). Espace (ligne vide)
+// entre le recap et l'invitation : "aere et pas fondu dans le message".
+const OWNER_DM_ID = 6593812300
+const CTA_WORLD = "🌍 Don't miss any international news." + NL + '🐔 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
+async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+  try {
+    await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText + NL + NL + cta, disable_web_page_preview: true }),
+    })
+  } catch (e) { console.error('dmOwnerCopy:', String(e)) }
+}
+
 // Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
 async function markSent(jobKey: string): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL')
@@ -368,8 +381,12 @@ Deno.serve(async (req: Request) => {
       // 2) TRADUCTION EN -> The Chicken Coop, World Roost (1489)
       const frBody = result.frText.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
       const enBody = await translateToEnglish(frBody)
-      if (enBody) await sendWithBanner(botToken, chatId, imgUrl, hookEn + NL + NL + enBody, WORLD_THREAD_EN)
-      else console.error('daily-world[' + kind + ']: traduction EN vide')
+      if (enBody) {
+        const enMsg = hookEn + NL + NL + enBody
+        await sendWithBanner(botToken, chatId, imgUrl, enMsg, WORLD_THREAD_EN)
+        // Recap info du soir (21h40) : copie EN + CTA -> owner (pour X).
+        if (kind === 'wr_night') await dmOwnerCopy(botToken, enMsg, CTA_WORLD)
+      } else console.error('daily-world[' + kind + ']: traduction EN vide')
       await markSent(KIND_JOB[kind] || ('world-' + kind))
       console.log('daily-world[' + kind + '] poste:', result.frText.slice(0, 80))
     } catch (e) { console.error('daily-world[' + kind + '] bg exception:', String(e)) }

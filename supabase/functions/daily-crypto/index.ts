@@ -147,6 +147,19 @@ async function logDailyTopic(slot: string, summary: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+// Copie EN + CTA -> owner uniquement (pour coller sur X). Ligne vide entre
+// le recap et l'invitation : "aere et pas fondu dans le message".
+const OWNER_DM_ID = 6593812300
+const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + '🐔 Join the Chicken Coop :' + NL + 'T.me/LeCoqFrancis'
+async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+  try {
+    await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText + NL + NL + cta, disable_web_page_preview: true }),
+    })
+  } catch (e) { console.error('dmOwnerCopy:', String(e)) }
+}
+
 // Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
 async function markSent(jobKey: string): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL')
@@ -233,6 +246,112 @@ async function generateNews(slot: Slot): Promise<{ ok: boolean; text: string; re
   if (!msg) return { ok: false, text: '', reason: 'étape B: mise en forme vide' }
   if (msg.toUpperCase().indexOf('NONE') === 0) return { ok: false, text: '', reason: 'étape B: NONE' }
   return { ok: true, text: SLOT_HOOK[slot] + NL + NL + splitAccroche(msg), reason: '' }
+}
+
+// == CRYPTO EVENING (laius marches + crypto, puis % en direct) ==
+// Les POURCENTAGES viennent directement des APIs (Yahoo / CoinGecko) et
+// sont formates en dur : jamais generes par l'IA (zero hallucination sur
+// les chiffres). Seul le "laius" (le pourquoi) passe par l'IA grounded.
+
+// Signe + couleur pour un pourcentage (ex. +0.8% -> "🟢 +0.8%").
+function fmtPct(p: number): string {
+  const s = (p >= 0 ? '+' : '') + p.toFixed(1) + '%'
+  return (p >= 0 ? '🟢 ' : '🔴 ') + s
+}
+
+// -- 5 plus grandes places boursieres mondiales (Yahoo Finance) --
+interface IdxDef { sym: string; label: string; flag: string }
+const STOCK_INDICES: IdxDef[] = [
+  { sym: '%5EGSPC', label: 'S&P 500', flag: '🇺🇸' },        // Wall Street (NYSE)
+  { sym: '%5EIXIC', label: 'Nasdaq', flag: '🇺🇸' },         // Nasdaq
+  { sym: '%5ESTOXX50E', label: 'Euro Stoxx 50', flag: '🇪🇺' }, // Euronext / zone euro
+  { sym: '%5EN225', label: 'Nikkei 225', flag: '🇯🇵' },     // Tokyo
+  { sym: '000001.SS', label: 'Shanghai', flag: '🇨🇳' },     // Shanghai
+]
+async function fetchIndexPct(def: IdxDef): Promise<string | null> {
+  try {
+    const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + def.sym + '?range=1d&interval=1d'
+    const res = await tfetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 8000)
+    if (!res.ok) return null
+    const d = await res.json()
+    const meta = (d && d.chart && d.chart.result && d.chart.result[0]) ? d.chart.result[0].meta : null
+    if (!meta) return null
+    const price = Number(meta.regularMarketPrice)
+    const prev = Number(meta.chartPreviousClose ?? meta.previousClose)
+    if (!isFinite(price) || !isFinite(prev) || prev === 0) return null
+    return def.flag + ' ' + def.label + ': ' + fmtPct((price - prev) / prev * 100)
+  } catch { return null }
+}
+async function fetchStockBlock(): Promise<string> {
+  const rows = await Promise.all(STOCK_INDICES.map(fetchIndexPct))
+  const lines = rows.filter((x): x is string => Boolean(x))
+  if (!lines.length) return ''   // toutes les recuperations ont echoue -> on omet le bloc
+  return '📊 World stock markets right now:' + NL + lines.join(NL)
+}
+
+// -- 5 plus grosses cryptos (CoinGecko, variation 24h) ----------
+async function fetchCryptoBlock(): Promise<string> {
+  try {
+    const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=5&page=1&price_change_percentage=24h'
+    const res = await tfetch(url, {}, 8000)
+    if (!res.ok) return ''
+    const rows = await res.json()
+    if (!Array.isArray(rows) || !rows.length) return ''
+    const lines = rows.map((c: any) => {
+      const sym = String((c && c.symbol) || '').toUpperCase()
+      const p = Number(c && c.price_change_percentage_24h)
+      if (!sym || !isFinite(p)) return ''
+      return '• ' + sym + ': ' + fmtPct(p)
+    }).filter(Boolean)
+    if (!lines.length) return ''
+    return '🪙 Top 5 crypto (24h):' + NL + lines.join(NL)
+  } catch { return '' }
+}
+
+// -- Laius du soir : POURQUOI ca monte/baisse (grounded) --------
+function searchPromptEveningMood(): string {
+  return [
+    'You are a markets analyst. Use Google Search to explain the mood of financial markets and crypto over the LAST 24 HOURS.',
+    'Cover BOTH: (1) traditional markets (major stock indices in the US, Europe and Asia) and (2) crypto (Bitcoin, Ethereum and the overall crypto market).',
+    'Explain WHY they are up or down today: name the CONCRETE drivers (the Fed / interest rates, inflation data, jobs, earnings season, a major geopolitical event, ETF flows, a big crypto-specific event, etc.).',
+    'Report the VERIFIED FACTS in 3 to 6 short factual lines, naming the drivers and the direction of the moves. No styling.',
+    'If you truly cannot tell, reply with exactly: NONE',
+  ].join(NL)
+}
+function formatPromptEveningBlurb(facts: string): string {
+  return [
+    'You are Francis the rooster, mascot of the $FRANC community.',
+    'Below are VERIFIED FACTS about today market and crypto mood (already researched):',
+    '---', facts, '---',
+    'Write a SHORT "laius": 2 to 4 sentences IN ENGLISH explaining, simply and clearly, why classic markets AND crypto are up or down today. Connect the two.',
+    '',
+    'HARD RULES:',
+    '- 500 CHARACTERS MAXIMUM.',
+    '- Plain text, no title, no hook, no bullet, no emoji. Begin directly with the explanation.',
+    '- Base it ONLY on the facts above. NEVER invent numbers, names or events. Stay factual and NEUTRAL.',
+    '- NO financial advice, never say "moon/pump/buy/sell".',
+    '- If the facts say NONE or are empty, reply with exactly: NONE',
+    '',
+    'Output ONLY the laius text (or NONE), nothing else.',
+  ].join(NL)
+}
+
+async function generateEvening(): Promise<{ ok: boolean; text: string; reason: string; logText?: string }> {
+  const [stockBlock, cryptoBlock] = await Promise.all([fetchStockBlock(), fetchCryptoBlock()])
+  const facts = await groundedSearch(searchPromptEveningMood())
+  let blurb = ''
+  if (facts && facts.toUpperCase().indexOf('NONE') !== 0) {
+    const b = await formatCall(formatPromptEveningBlurb(facts))
+    if (b && b.toUpperCase().indexOf('NONE') !== 0) blurb = b.trim()
+  }
+  if (!blurb && !stockBlock && !cryptoBlock) return { ok: false, text: '', reason: 'evening: ni laius ni donnees marche' }
+  const parts: string[] = [SLOT_HOOK.evening]
+  if (blurb) parts.push('', blurb)
+  if (stockBlock) parts.push('', stockBlock)
+  if (cryptoBlock) parts.push('', cryptoBlock)
+  // On ne JOURNALISE que le laius : le recap Crypto Night le reprend tel quel.
+  const logText = blurb || 'Markets & crypto mood update this evening.'
+  return { ok: true, text: parts.join(NL), reason: '', logText }
 }
 
 // == CRYPTO NIGHT (récap du jour) ==============================
@@ -360,7 +479,9 @@ Deno.serve(async (req: Request) => {
     if (body && body.dryRun === true) dryRun = true
   } catch { /* corps vide -> morning */ }
 
-  const gen = () => (kind === 'night') ? generateNight() : generateNews(kind as Slot)
+  const gen = () => (kind === 'night')
+    ? generateNight()
+    : (kind === 'evening') ? generateEvening() : generateNews(kind as Slot)
 
   if (dryRun) {
     const r = await gen()
@@ -375,7 +496,10 @@ Deno.serve(async (req: Request) => {
       const imgUrl = imageUrlFor(kind)
       // 1) ANGLAIS (source) -> The Chicken Coop, Crypto Coop (1490)
       await sendWithBanner(botToken, chatId, imgUrl, result.text, CRYPTO_THREAD_EN)
-      if (kind !== 'night') await logDailyTopic(kind, result.text)
+      // Le soir on ne journalise QUE le laius (repris par le recap Night).
+      if (kind !== 'night') await logDailyTopic(kind, (result as any).logText || result.text)
+      // Recap Crypto Night (20h45) : copie EN + CTA -> owner (pour X).
+      if (kind === 'night') await dmOwnerCopy(botToken, result.text, CTA_CRYPTO)
       // 2) TRADUCTION FR -> Le Poulailler, Crypto Cocorico (43)
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, imgUrl, fr, FR_THREAD_CRYPTO)

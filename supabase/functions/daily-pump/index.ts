@@ -313,6 +313,18 @@ async function markSent(jobKey: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+// -- Copie owner (pour X) : message EN + CTA "rejoins le poulailler" --------
+const OWNER_DM_ID = 6593812300
+const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + "🐔 Join the Chicken Coop :" + NL + "T.me/LeCoqFrancis"
+async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+  try {
+    await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText + NL + NL + cta, disable_web_page_preview: true }),
+    })
+  } catch (e) { console.error('dmOwnerCopy:', String(e)) }
+}
+
 // -- Point d'entree --------------------------------------------
 Deno.serve(async (req: Request) => {
   const secret = Deno.env.get('CRON_SECRET')
@@ -346,6 +358,7 @@ Deno.serve(async (req: Request) => {
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr, FR_THREAD_CRYPTO, kind)   // FR -> Crypto Cocorico
       else console.error('daily-pump: traduction FR vide')
+      await dmOwnerCopy(botToken, result.text, CTA_CRYPTO)   // copie EN + CTA -> owner (pour X)
       await markSent(slot)
       console.log('daily-pump poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-pump bg exception:', String(e)) }
