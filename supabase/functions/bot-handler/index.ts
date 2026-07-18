@@ -483,6 +483,28 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ business_connection_id: connId, chat_id: bChat, text: reply, parse_mode: 'HTML', disable_web_page_preview: true }),
           })
           await saveChatMemory(sb, memKeyB, 'model', reply)
+          // 🔔 Notifie l'OWNER : DM Business et Francis a répondu. UNE SEULE
+          // notif par conversation et par JOUR (Paris). Le titulaire du compte
+          // Business est déjà exclu plus haut (anti-boucle).
+          try {
+            const parisDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
+            const firstOfDay = await claimReplySlot(sb, 'dmnotif:' + bChat + ':' + parisDay, 90000)  // ~25h
+            if (firstOfDay) {
+              const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              const f: any = bm.from || {}
+              const fullName = esc([f.first_name, f.last_name].filter(Boolean).join(' ')) || 'Sans nom'
+              const at = f.username ? ('@' + f.username) : '(pas de pseudo)'
+              const notif =
+                `🔔 <b>Nouveau DM (Business) — Francis a répondu</b>\n\n` +
+                `👤 <a href="tg://user?id=${f.id}">${fullName}</a> ${esc(at)}\n` +
+                `🆔 <code>${f.id}</code>\n\n` +
+                `💬 <b>1er message :</b>\n${esc(bText)}\n\n` +
+                `🤖 <b>Réponse :</b>\n${esc(reply)}`
+              const extra: Record<string, any> = {}
+              if (f.username) extra.reply_markup = { inline_keyboard: [[{ text: '💬 Ouvrir la conversation', url: 'https://t.me/' + f.username }]] }
+              await sendMessage(bToken, Number(OWNER_ID), notif, extra)
+            }
+          } catch (e) { console.error('notifyOwnerBM:', String(e)) }
         } catch (e) { console.error('business_message bg:', String(e)) }
       })()
       try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }

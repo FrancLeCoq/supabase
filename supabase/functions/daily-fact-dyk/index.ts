@@ -186,24 +186,13 @@ function xShareKeyboard(fullText: string) {
     : [xBtn]
   return { inline_keyboard: [row] }
 }
-// Avec imgUrl : PHOTO + légende (l'owner a l'image pour l'attacher sur X ;
-// X ne permet pas de pré-attacher un média via le bouton). Légende <=1024 car,
-// sinon repli texte. Boutons Copier / Publier sur X dans les 2 cas.
-async function dmOwnerCopy(token: string, enText: string, cta: string, imgUrl = ''): Promise<void> {
-  const fullText = enText + NL + NL + cta
-  const kb = xShareKeyboard(fullText)
+// Copie owner en TEXTE seul + boutons (l'owner ajoute l'image lui-même).
+async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
   try {
-    if (imgUrl && fullText.length <= 1024) {
-      const res = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: OWNER_DM_ID, photo: imgUrl, caption: fullText, reply_markup: kb }),
-      })
-      const data = await res.json()
-      if (data && data.ok) return
-    }
+    const fullText = enText + NL + NL + cta
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: kb }),
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: xShareKeyboard(fullText) }),
     })
   } catch (e) { console.error('dmOwnerCopy:', String(e)) }
 }
@@ -249,7 +238,7 @@ Deno.serve(async (req: Request) => {
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr)         // Le Poulailler - General
       else console.error('daily-fact-dyk: traduction FR vide')
-      await dmOwnerCopy(botToken, result.text, CTA_CRYPTO, imageUrl())  // copie EN + CTA + banniere -> owner (pour X)
+      await dmOwnerCopy(botToken, result.text, CTA_CRYPTO)          // copie EN + CTA -> owner (pour X)
       await markSent('franc-did-you-know-1')
       console.log('daily-fact-dyk poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-fact-dyk bg exception:', String(e)) }
