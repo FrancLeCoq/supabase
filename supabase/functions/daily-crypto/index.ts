@@ -298,7 +298,14 @@ async function fetchStockBlock(): Promise<string> {
   const rows = await Promise.all(STOCK_INDICES.map(fetchIndexPct))
   const lines = rows.filter((x): x is string => Boolean(x))
   if (!lines.length) return ''   // toutes les recuperations ont echoue -> on omet le bloc
-  return '📊 World stock markets right now:' + NL + lines.join(NL)
+  // Le week-end (sam/dim, heure de Paris) les bourses sont FERMEES : les %
+  // affiches sont figes a la cloture de vendredi soir -> on le precise.
+  const wd = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', weekday: 'short' }).format(new Date())
+  const weekend = (wd === 'Sat' || wd === 'Sun')
+  const header = weekend
+    ? '📊 World stock markets (closed since Friday evening):'
+    : '📊 World stock markets right now:'
+  return header + NL + lines.join(NL)
 }
 
 // -- Liste FIXE de 6 cryptos (CoinGecko, variation 24h) ---------
