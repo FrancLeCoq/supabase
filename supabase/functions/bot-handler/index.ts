@@ -1772,23 +1772,30 @@ Deno.serve(async (req) => {
           await sendMessage(token, chatId, reply)
           await saveChatMemory(supabase, memKey, 'model', reply)
           // 🔔 Notifie l'OWNER : quelqu'un a écrit en privé et Francis a répondu.
-          // (jamais pour les DM de l'owner lui-meme). Permet de surveiller les
-          // réponses du bot et d'affiner le prompt. Lien cliquable vers la perso.
+          // UNE SEULE notif par conversation et par JOUR (fuseau Paris) : au
+          // début de l'échange. On "claim" un créneau daté (réutilise le verrou
+          // existant chat_reply_lock, pas de nouvelle table). Repart à zéro
+          // chaque jour → si la personne revient le lendemain, nouvelle notif.
+          // (jamais pour les DM de l'owner lui-meme)
           if (userId !== OWNER_ID) {
             try {
-              const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-              const f: any = msg.from || {}
-              const fullName = esc([f.first_name, f.last_name].filter(Boolean).join(' ')) || 'Sans nom'
-              const at = f.username ? ('@' + f.username) : '(pas de pseudo)'
-              const notif =
-                `🔔 <b>Nouveau DM — Francis a répondu</b>\n\n` +
-                `👤 <a href="tg://user?id=${f.id}">${fullName}</a> ${esc(at)}\n` +
-                `🆔 <code>${f.id}</code>\n\n` +
-                `💬 <b>Message :</b>\n${esc(rawText)}\n\n` +
-                `🤖 <b>Réponse :</b>\n${esc(reply)}`
-              const extra: Record<string, any> = {}
-              if (f.username) extra.reply_markup = { inline_keyboard: [[{ text: '💬 Ouvrir la conversation', url: 'https://t.me/' + f.username }]] }
-              await sendMessage(token, Number(OWNER_ID), notif, extra)
+              const parisDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
+              const firstOfDay = await claimReplySlot(supabase, 'dmnotif:' + chatId + ':' + parisDay, 90000)  // ~25h
+              if (firstOfDay) {
+                const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                const f: any = msg.from || {}
+                const fullName = esc([f.first_name, f.last_name].filter(Boolean).join(' ')) || 'Sans nom'
+                const at = f.username ? ('@' + f.username) : '(pas de pseudo)'
+                const notif =
+                  `🔔 <b>Nouveau DM — Francis a répondu</b>\n\n` +
+                  `👤 <a href="tg://user?id=${f.id}">${fullName}</a> ${esc(at)}\n` +
+                  `🆔 <code>${f.id}</code>\n\n` +
+                  `💬 <b>1er message :</b>\n${esc(rawText)}\n\n` +
+                  `🤖 <b>Réponse :</b>\n${esc(reply)}`
+                const extra: Record<string, any> = {}
+                if (f.username) extra.reply_markup = { inline_keyboard: [[{ text: '💬 Ouvrir la conversation', url: 'https://t.me/' + f.username }]] }
+                await sendMessage(token, Number(OWNER_ID), notif, extra)
+              }
             } catch (e) { console.error('notifyOwnerDm:', String(e)) }
           }
         } catch (e) { console.error('DM francis bg:', String(e)) }

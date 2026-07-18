@@ -151,11 +151,21 @@ async function logDailyTopic(slot: string, summary: string): Promise<void> {
 // le recap et l'invitation : "aere et pas fondu dans le message".
 const OWNER_DM_ID = 6593812300
 const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + '🐔 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
+// Boutons sous la copie owner : 📋 Copier (copy_text natif, si <=256 car) +
+// 📤 Publier sur X (ouvre X avec le texte deja pre-rempli).
+function xShareKeyboard(fullText: string) {
+  const xBtn = { text: '📤 Publier sur X', url: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(fullText) }
+  const row = (fullText.length <= 256)
+    ? [{ text: '📋 Copier', copy_text: { text: fullText } }, xBtn]
+    : [xBtn]
+  return { inline_keyboard: [row] }
+}
 async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
   try {
+    const fullText = enText + NL + NL + cta
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText + NL + NL + cta, disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: xShareKeyboard(fullText) }),
     })
   } catch (e) { console.error('dmOwnerCopy:', String(e)) }
 }

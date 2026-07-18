@@ -149,10 +149,11 @@ const HOOK_FR: Record<RType, string> = {
 
 // -- Telegram --------------------------------------------------
 // Renvoie le message_id publie (0 si echec) pour pouvoir l'epingler.
-async function post(token: string, chatId: number, text: string, threadId: number): Promise<number> {
+async function post(token: string, chatId: number, text: string, threadId: number, replyMarkup?: any): Promise<number> {
   try {
     const body: any = { chat_id: chatId, text, disable_web_page_preview: true }
     if (threadId) body.message_thread_id = threadId
+    if (replyMarkup) body.reply_markup = replyMarkup
     const res = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
@@ -160,6 +161,19 @@ async function post(token: string, chatId: number, text: string, threadId: numbe
     if (!data || !data.ok) { console.error('racing post:', JSON.stringify(data).slice(0, 200)); return 0 }
     return Number(data.result && data.result.message_id) || 0
   } catch (e) { console.error('racing post exception', String(e)); return 0 }
+}
+// Boutons sous la copie owner : 📋 Copier (copy_text natif, si <=256 car) +
+// 📤 Publier sur X (ouvre X avec le texte deja pre-rempli).
+function xShareKeyboard(fullText: string) {
+  const xBtn = { text: '📤 Publier sur X', url: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(fullText) }
+  const row = (fullText.length <= 256)
+    ? [{ text: '📋 Copier', copy_text: { text: fullText } }, xBtn]
+    : [xBtn]
+  return { inline_keyboard: [row] }
+}
+// Copie owner (F1/MotoGP) avec boutons Copier + Publier sur X.
+async function dmOwnerCopy(token: string, fullText: string): Promise<void> {
+  try { await post(token, OWNER_ID, fullText, 0, xShareKeyboard(fullText)) } catch { /* ignore */ }
 }
 // Epingle un message (sans notification bruyante) - utilise pour /F1we /GPwe.
 async function pinMessage(token: string, chatId: number, messageId: number): Promise<void> {
@@ -200,8 +214,9 @@ async function runCommand(token: string, command: string): Promise<void> {
     const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en
     const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN)
     if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
-    // Copie EN + CTA -> owner (pour coller sur X). CTA jamais dans le post Telegram.
-    await dmOwner(token, enMsg + NL + NL + (isF1 ? CTA_F1 : CTA_MOTOGP))
+    // Copie EN + CTA -> owner (pour coller sur X), avec boutons Copier + Publier sur X.
+    // CTA jamais dans le post Telegram.
+    await dmOwnerCopy(token, enMsg + NL + NL + (isF1 ? CTA_F1 : CTA_MOTOGP))
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
   // FR -> Le Poulailler (147)
