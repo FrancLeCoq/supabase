@@ -1771,6 +1771,26 @@ Deno.serve(async (req) => {
           if (!reply) { await releaseReplySlot(supabase, memKey); return }   // CA seul / rien à ajouter
           await sendMessage(token, chatId, reply)
           await saveChatMemory(supabase, memKey, 'model', reply)
+          // 🔔 Notifie l'OWNER : quelqu'un a écrit en privé et Francis a répondu.
+          // (jamais pour les DM de l'owner lui-meme). Permet de surveiller les
+          // réponses du bot et d'affiner le prompt. Lien cliquable vers la perso.
+          if (userId !== OWNER_ID) {
+            try {
+              const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              const f: any = msg.from || {}
+              const fullName = esc([f.first_name, f.last_name].filter(Boolean).join(' ')) || 'Sans nom'
+              const at = f.username ? ('@' + f.username) : '(pas de pseudo)'
+              const notif =
+                `🔔 <b>Nouveau DM — Francis a répondu</b>\n\n` +
+                `👤 <a href="tg://user?id=${f.id}">${fullName}</a> ${esc(at)}\n` +
+                `🆔 <code>${f.id}</code>\n\n` +
+                `💬 <b>Message :</b>\n${esc(rawText)}\n\n` +
+                `🤖 <b>Réponse :</b>\n${esc(reply)}`
+              const extra: Record<string, any> = {}
+              if (f.username) extra.reply_markup = { inline_keyboard: [[{ text: '💬 Ouvrir la conversation', url: 'https://t.me/' + f.username }]] }
+              await sendMessage(token, Number(OWNER_ID), notif, extra)
+            } catch (e) { console.error('notifyOwnerDm:', String(e)) }
+          }
         } catch (e) { console.error('DM francis bg:', String(e)) }
       })()
       try { (globalThis as any).EdgeRuntime?.waitUntil?.(bg) } catch (_) { /* best effort */ }
