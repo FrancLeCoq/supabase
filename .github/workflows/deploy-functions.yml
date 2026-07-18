@@ -30,9 +30,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Installer la CLI Supabase
+        # Version ÉPINGLÉE (pas 'latest') : évite l'appel à l'API GitHub qui
+        # résout la dernière release et a été rate-limité (déploiements échoués).
+        # Pour mettre à jour : bump ce numéro vers une release supabase/cli valide.
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.109.1
 
       - name: Déployer toutes les fonctions du repo
         run: supabase functions deploy --project-ref mubqtnqulpyehkgubhnh --no-verify-jwt
