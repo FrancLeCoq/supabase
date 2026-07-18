@@ -160,12 +160,24 @@ function xShareKeyboard(fullText: string) {
     : [xBtn]
   return { inline_keyboard: [row] }
 }
-async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+// Avec imgUrl : PHOTO + légende (l'owner a l'image pour l'attacher sur X ;
+// X ne permet pas de pré-attacher un média via le bouton). Légende <=1024 car,
+// sinon repli texte. Boutons Copier / Publier sur X dans les 2 cas.
+async function dmOwnerCopy(token: string, enText: string, cta: string, imgUrl = ''): Promise<void> {
+  const fullText = enText + NL + NL + cta
+  const kb = xShareKeyboard(fullText)
   try {
-    const fullText = enText + NL + NL + cta
+    if (imgUrl && fullText.length <= 1024) {
+      const res = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: OWNER_DM_ID, photo: imgUrl, caption: fullText, reply_markup: kb }),
+      })
+      const data = await res.json()
+      if (data && data.ok) return
+    }
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: xShareKeyboard(fullText) }),
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: kb }),
     })
   } catch (e) { console.error('dmOwnerCopy:', String(e)) }
 }
@@ -526,8 +538,8 @@ Deno.serve(async (req: Request) => {
       await sendWithBanner(botToken, chatId, imgUrl, result.text, CRYPTO_THREAD_EN)
       // Le soir on ne journalise QUE le laius (repris par le recap Night).
       if (kind !== 'night') await logDailyTopic(kind, (result as any).logText || result.text)
-      // Recap Crypto Night (20h45) : copie EN + CTA -> owner (pour X).
-      if (kind === 'night') await dmOwnerCopy(botToken, result.text, CTA_CRYPTO)
+      // Recap Crypto Night (20h45) : copie EN + CTA + banniere -> owner (pour X).
+      if (kind === 'night') await dmOwnerCopy(botToken, result.text, CTA_CRYPTO, imgUrl)
       // 2) TRADUCTION FR -> Le Poulailler, Crypto Cocorico (43)
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, imgUrl, fr, FR_THREAD_CRYPTO)
