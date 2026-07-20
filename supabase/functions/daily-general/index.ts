@@ -3,7 +3,8 @@
 //
 //  Brique ISOLEE : si elle plante, Crypto/World/Hot/bot continuent.
 //  Deux creneaux, corps {"kind":"..."} :
-//    * gm_joke  07:30 Paris  -> GM du coq + blague de basse-cour
+//    * gm_joke  07:30 Paris  -> GM du coq, registre alterne chaque jour :
+//                               basse-cour / jeux / ecosysteme $FRANC
 //    * gn       20:15 Paris  -> GN du coq, message leger & fun
 //
 //  Chaque message est genere NATIVEMENT dans chaque langue (pas une
@@ -50,15 +51,34 @@ async function generate(prompt: string): Promise<string> {
 }
 
 // -- Prompts par langue ----------------------------------------
-function gmPrompt(lang: 'English' | 'French'): string {
+// Le GM du matin ALTERNE sur 3 registres (rotation quotidienne, fuseau Paris),
+// pour ne plus faire une blague basse-cour tous les jours :
+//   farmyard  -> blague/jeu de mots basse-cour (l'historique)
+//   games     -> blague sur les jeux OU invitation a lancer une partie pour se detendre
+//   ecosystem -> petit mot chaleureux sur l'ecosysteme/communaute $FRANC (jamais de prix)
+type GmTheme = 'farmyard' | 'games' | 'ecosystem'
+function pickGmTheme(): GmTheme {
+  const parisDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
+  const dayNum = Math.floor(Date.parse(parisDay + 'T00:00:00Z') / 86400000)
+  const themes: GmTheme[] = ['farmyard', 'games', 'ecosystem']
+  return themes[((dayNum % 3) + 3) % 3]
+}
+
+function gmPrompt(lang: 'English' | 'French', theme: GmTheme): string {
+  const themeLine =
+    theme === 'games'
+      ? 'THEME TODAY — GAMES: either a light, clean joke/pun about gaming, OR a friendly nudge to play one of the community mini-games to relax or pass the time (e.g. "stuck on your commute? sneak in a quick game to kill time"). Playful, never pushy.'
+      : theme === 'ecosystem'
+      ? 'THEME TODAY — $FRANC ECOSYSTEM: a short, upbeat word about the $FRANC community & universe (the rooster world, the free mini-games, being part of the coop, the good vibes). Warm and encouraging. ABSOLUTELY NO price talk, no numbers, no "moon/pump", no financial advice — only community spirit.'
+      : 'THEME TODAY — FARMYARD: include ONE original, clean farmyard / rooster / hen JOKE or pun (light and funny, family-friendly).'
   return [
     'You are Francis, a witty rooster mascot of a friendly crypto community on Telegram.',
     'Write a short, warm GOOD MORNING message for the group, IN ' + lang.toUpperCase() + '.',
-    'It MUST include ONE original, clean farmyard / rooster / hen JOKE or pun (light and funny, family-friendly).',
+    themeLine,
     'RULES:',
     '- 2 to 4 short lines, MAX 320 characters total.',
     '- Playful and cheerful. 1 to 3 emojis maximum.',
-    '- No hashtags, no links, no financial talk, no "$FRANC" price talk.',
+    '- No hashtags, no links. No price talk, no financial advice, never say "moon/pump".',
     '- Output ONLY the message, nothing else.',
   ].join(NL)
 }
@@ -120,7 +140,8 @@ Deno.serve(async (req: Request) => {
     if (body && body.dryRun === true) dryRun = true
   } catch { /* corps vide -> gm_joke */ }
 
-  const promptFor = (lang: 'English' | 'French') => (kind === 'gn') ? gnPrompt(lang) : gmPrompt(lang)
+  const gmTheme = pickGmTheme()   // meme registre pour EN et FR le meme jour
+  const promptFor = (lang: 'English' | 'French') => (kind === 'gn') ? gnPrompt(lang) : gmPrompt(lang, gmTheme)
 
   if (dryRun) {
     const en = await generate(promptFor('English'))
