@@ -1,16 +1,19 @@
 // ================================================================
 //  daily-hot - rubrique "Hot" (actu industrie du divertissement adulte)
-//  de Francis le coq, via XBIZ. Brique ISOLEE du decoupage daily-fact.
+//  de Francis le coq. Brique ISOLEE du decoupage daily-fact.
 //
-//  SOURCE : flux RSS XBIZ (PAS de grounding : sujet non couvert par
-//  Google Search grounding). Selection + redaction par gemini-3.1-flash-lite.
-//  Parsing RSS "maison" SANS regex (robuste + deploiement fiable).
+//  SOURCES : flux RSS (PAS de grounding : sujet non couvert par Google
+//  Search grounding), selon le creneau :
+//    * matin (hot-morning) + soir (hot-evening) -> XBIZ (frais, plusieurs/j)
+//    * midi  (hot-midday)                       -> adultfyi.com (variete)
+//  Les flux sont TRIES par date (adultfyi n'est pas chronologique : post
+//  epingle en tete). Image : XBIZ <image>, adultfyi <media:thumbnail>/
+//  <enclosure> (repli texte si sendPhoto refuse le format).
+//  Selection + redaction par gemini-3.1-flash-lite. Parsing SANS regex.
 //
-//  2 creneaux/jour (pg_cron, corps {"kind":"hot"}):
-//    * hot-morning 08:00 UTC
-//    * hot-evening 20:00 UTC
-//  Meilleure actu des 12 dernieres heures, anti-doublon GLISSANT sur 72h
-//  (filtre deterministe sur le TITRE source XBIZ, pas le message reformule),
+//  3 creneaux/jour (pg_cron, corps {"slot":"hot-morning|hot-midday|hot-evening"}).
+//  Anti-doublon GLISSANT sur 72h, TOUTES sources confondues (filtre
+//  deterministe sur le TITRE source, pas le message reformule),
 //  AVEC la photo de l'article. Ton taquin mais SOBRE (rien d'explicite).
 //
 //  Diffusion : EN d'abord -> "The Chicken Coop" Hot (1488),
@@ -28,7 +31,6 @@ const FR_THREAD_HOT = 33
 const HOT_THREAD_EN = 1488
 const HOT_HOOK_EN = '🌶️ Hot News:'
 const HOT_HOOK_FR = '🌶️ Actu Hot :'
-const HOT_FEED = 'https://www.xbiz.com/rss/news/movies-stars.xml'
 
 // -- Reseau ----------------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -105,36 +107,67 @@ function clean(s: string): string {
   return collapseWs(decodeEntities(stripTags(decodeEntities(s))))
 }
 
-// -- Recuperation des items XBIZ -------------------------------
+// -- Sources Hot : XBIZ (frais, plusieurs/jour) + adultfyi (variete midi) ----
+// Image : XBIZ a une balise <image> propre ; adultfyi expose l'image via
+// <media:thumbnail url="..."> (ou <enclosure url="...">).
+function attrUrl(s: string, tag: string): string {
+  const i = s.indexOf('<' + tag)
+  if (i < 0) return ''
+  const gt = s.indexOf('>', i)
+  const seg = s.slice(i, gt < 0 ? i + 300 : gt)
+  const ai = seg.indexOf('url="')
+  if (ai < 0) return ''
+  const st = ai + 5
+  const en = seg.indexOf('"', st)
+  return en < 0 ? '' : seg.slice(st, en)
+}
+interface HotSource { name: string; feed: string; windowH: number; imageOf: (it: string) => string }
+const SOURCES: Record<'xbiz' | 'adultfyi', HotSource> = {
+  xbiz: {
+    name: 'XBIZ',
+    feed: 'https://www.xbiz.com/rss/news/movies-stars.xml',
+    windowH: 12,     // flux frais, plusieurs publications/jour
+    imageOf: (it) => clean(between(it, '<image>', '</image>')),
+  },
+  adultfyi: {
+    name: 'adultfyi',
+    feed: 'https://adultfyi.com/feed/',
+    windowH: 96,     // cadence plus lente (~jours) -> fenetre elargie
+    imageOf: (it) => attrUrl(it, 'media:thumbnail') || attrUrl(it, 'enclosure'),
+  },
+}
+
+// -- Recuperation des items d'une source -----------------------
 interface HotItem { title: string; descr: string; image: string }
-async function fetchHotItems(hours = 12): Promise<{ items: HotItem[]; reason: string }> {
+async function fetchHotItems(src: HotSource): Promise<{ items: HotItem[]; reason: string }> {
   try {
-    const res = await tfetch(HOT_FEED, {
+    const res = await tfetch(src.feed, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
       },
     })
-    if (!res.ok) return { items: [], reason: 'RSS HTTP ' + res.status }
+    if (!res.ok) return { items: [], reason: src.name + ' RSS HTTP ' + res.status }
     const xml = await res.text()
     const rawItems = xml.split('<item>').slice(1).map((s) => s.split('</item>')[0])
     if (rawItems.length === 0) return { items: [], reason: 'aucun item dans le flux' }
-    const now = Date.now()
-    const WINDOW = hours * 3600 * 1000
-    const recent: HotItem[] = []
-    const fallback: HotItem[] = []
-    for (const it of rawItems) {
+    // On PARSE tout puis on TRIE par date decroissante : certains flux
+    // (adultfyi) ne sont PAS chronologiques (post epingle en tete).
+    const parsed = rawItems.map((it) => {
       const title = clean(between(it, '<title>', '</title>'))
-      if (!title) continue
       const descr = clean(between(it, '<description>', '</description>')).slice(0, 300)
-      const image = clean(between(it, '<image>', '</image>'))
-      const item: HotItem = { title, descr, image }
-      if (fallback.length < 12) fallback.push(item)
+      const image = src.imageOf(it)
       const pubStr = between(it, '<pubDate>', '</pubDate>').trim()
-      const pub = pubStr ? new Date(pubStr).getTime() : NaN
-      if (isFinite(pub) && (now - pub) <= WINDOW && (now - pub) >= -3600 * 1000 && recent.length < 15) recent.push(item)
-    }
+      const t = pubStr ? new Date(pubStr).getTime() : NaN
+      return { title, descr, image, t: isFinite(t) ? t : 0 }
+    }).filter((p) => p.title)
+    parsed.sort((a, b) => b.t - a.t)   // plus recent d'abord
+    const now = Date.now()
+    const WINDOW = src.windowH * 3600 * 1000
+    const strip = (p: { title: string; descr: string; image: string }): HotItem => ({ title: p.title, descr: p.descr, image: p.image })
+    const recent = parsed.filter((p) => p.t > 0 && (now - p.t) <= WINDOW && (now - p.t) >= -3600 * 1000).slice(0, 15).map(strip)
     if (recent.length > 0) return { items: recent, reason: '' }
+    const fallback = parsed.slice(0, 12).map(strip)   // les 12 plus recents (deja tries par date)
     if (fallback.length > 0) return { items: fallback, reason: '' }
     return { items: [], reason: 'aucun titre exploitable' }
   } catch (e) { return { items: [], reason: 'exception RSS: ' + String(e) } }
@@ -194,9 +227,9 @@ function splitAccroche(s: string): string {
 }
 
 // -- Generation (selection + redaction EN) ---------------------
-async function generateHot(): Promise<{ ok: boolean; text: string; image: string; title: string; reason: string }> {
-  const { items: allItems, reason } = await fetchHotItems(12)
-  if (allItems.length === 0) return { ok: false, text: '', image: '', title: '', reason: '[XBIZ] ' + reason }
+async function generateHot(src: HotSource): Promise<{ ok: boolean; text: string; image: string; title: string; reason: string }> {
+  const { items: allItems, reason } = await fetchHotItems(src)
+  if (allItems.length === 0) return { ok: false, text: '', image: '', title: '', reason: '[' + src.name + '] ' + reason }
   const covered = await fetchRecentHot(72)   // anti-doublon 72h glissantes
   // Filtre DETERMINISTE : on retire les articles dont le titre a deja ete
   // publie sur 72h (comparaison insensible a la casse/espaces). Garde-fou
@@ -211,7 +244,7 @@ async function generateHot(): Promise<{ ok: boolean; text: string; image: string
     : ''
   const list = items.map((it, i) => (i + 1) + '. ' + it.title + (it.descr ? ' - ' + it.descr : '')).join(NL)
   const prompt = [
-    'You are Francis the rooster, a cheeky but classy anchor for the ADULT-ENTERTAINMENT-industry "Hot" corner of a Telegram community. Below are trade-news items from the LAST 12 HOURS from XBIZ.',
+    'You are Francis the rooster, a cheeky but classy anchor for the ADULT-ENTERTAINMENT-industry "Hot" corner of a Telegram community. Below are the freshest trade-news items from ' + src.name + ' (adult-industry trade press).',
     '',
     'YOUR TASK:',
     '1. Pick the SINGLE most interesting / "hottest" story for an adult-entertainment audience (new releases, performer news, launches, awards, notable industry moves).',
@@ -291,15 +324,18 @@ Deno.serve(async (req: Request) => {
   let slot = 'hot-evening'   // le cron passe {"slot":"hot-morning|hot-midday|hot-evening"}
   try { const body = await req.json(); if (body && body.dryRun === true) dryRun = true; if (body && typeof body.slot === 'string') slot = body.slot } catch { /* ok */ }
 
+  // Source selon le creneau : midi -> adultfyi (variete), matin/soir -> XBIZ.
+  const src = (slot === 'hot-midday') ? SOURCES.adultfyi : SOURCES.xbiz
+
   if (dryRun) {
-    const r = await generateHot()
-    return new Response(JSON.stringify({ ok: r.ok, reason: r.reason, image: r.image, length: r.text.length, text: r.text }, null, 2),
+    const r = await generateHot(src)
+    return new Response(JSON.stringify({ slot, source: src.name, ok: r.ok, reason: r.reason, image: r.image, length: r.text.length, text: r.text }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   const bg = (async () => {
     try {
-      const result = await generateHot()
+      const result = await generateHot(src)
       if (!result.ok) { console.error('daily-hot echec:', result.reason); return }
       const img = result.image
       // 1) ANGLAIS (source) -> Coop Hot (1488), avec la photo de l'article
