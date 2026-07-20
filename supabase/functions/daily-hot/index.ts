@@ -9,7 +9,8 @@
 //  2 creneaux/jour (pg_cron, corps {"kind":"hot"}):
 //    * hot-morning 08:00 UTC
 //    * hot-evening 20:00 UTC
-//  Meilleure actu des 12 dernieres heures, anti-doublon sur la journee,
+//  Meilleure actu des 12 dernieres heures, anti-doublon GLISSANT sur 72h
+//  (filtre deterministe sur le TITRE source XBIZ, pas le message reformule),
 //  AVEC la photo de l'article. Ton taquin mais SOBRE (rien d'explicite).
 //
 //  Diffusion : EN d'abord -> "The Chicken Coop" Hot (1488),
@@ -139,20 +140,22 @@ async function fetchHotItems(hours = 12): Promise<{ items: HotItem[]; reason: st
   } catch (e) { return { items: [], reason: 'exception RSS: ' + String(e) } }
 }
 
-// -- Anti-doublon (slot hot) -----------------------------------
-async function fetchTodayHot(): Promise<string[]> {
+// -- Anti-doublon (slot hot) : fenetre GLISSANTE 72h, sur le TITRE source ----
+async function fetchRecentHot(hours = 72): Promise<string[]> {
   const url = Deno.env.get('SUPABASE_URL')
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key) return []
   try {
-    const today = new Date().toISOString().slice(0, 10)
-    const res = await tfetch(url + '/rest/v1/daily_news_log?day=eq.' + today + '&slot=eq.hot&select=summary&order=created_at',
+    const since = new Date(Date.now() - hours * 3600 * 1000).toISOString()
+    const res = await tfetch(url + '/rest/v1/daily_news_log?created_at=gte.' + encodeURIComponent(since) + '&slot=eq.hot&select=summary&order=created_at',
       { headers: { apikey: key, Authorization: 'Bearer ' + key } })
     if (!res.ok) return []
     const rows = await res.json()
     return (Array.isArray(rows) ? rows : []).map((r: any) => String((r && r.summary) || '')).filter(Boolean)
   } catch { return [] }
 }
+// On journalise le TITRE de l'article XBIZ retenu (pas le message reformule) :
+// c'est ce titre qui sert de cle d'unicite sur 72h.
 async function logDailyTopic(summary: string): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL')
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -191,12 +194,20 @@ function splitAccroche(s: string): string {
 }
 
 // -- Generation (selection + redaction EN) ---------------------
-async function generateHot(): Promise<{ ok: boolean; text: string; image: string; reason: string }> {
-  const { items, reason } = await fetchHotItems(12)
-  if (items.length === 0) return { ok: false, text: '', image: '', reason: '[XBIZ] ' + reason }
-  const covered = await fetchTodayHot()
+async function generateHot(): Promise<{ ok: boolean; text: string; image: string; title: string; reason: string }> {
+  const { items: allItems, reason } = await fetchHotItems(12)
+  if (allItems.length === 0) return { ok: false, text: '', image: '', title: '', reason: '[XBIZ] ' + reason }
+  const covered = await fetchRecentHot(72)   // anti-doublon 72h glissantes
+  // Filtre DETERMINISTE : on retire les articles dont le titre a deja ete
+  // publie sur 72h (comparaison insensible a la casse/espaces). Garde-fou
+  // solide, sans dependre du jugement de l'IA. Si tout est deja couvert
+  // (rare), on retombe sur la liste complete pour ne pas rester muet.
+  const norm = (s: string) => collapseWs(s).toLowerCase()
+  const coveredSet = new Set(covered.map(norm))
+  const fresh = allItems.filter((it) => !coveredSet.has(norm(it.title)))
+  const items = fresh.length ? fresh : allItems
   const dedup = covered.length
-    ? NL + "ALREADY COVERED TODAY (below). Pick a genuinely DIFFERENT story: a DIFFERENT performer/studio/subject, NOT the same news from another angle or a follow-up on these." + NL + covered.map((s) => '- ' + s).join(NL) + NL
+    ? NL + "ALREADY COVERED in the last 72h (below). Pick a genuinely DIFFERENT story: a DIFFERENT performer/studio/subject, NOT the same news from another angle or a follow-up on these." + NL + covered.map((s) => '- ' + s).join(NL) + NL
     : ''
   const list = items.map((it, i) => (i + 1) + '. ' + it.title + (it.descr ? ' - ' + it.descr : '')).join(NL)
   const prompt = [
@@ -227,8 +238,8 @@ async function generateHot(): Promise<{ ok: boolean; text: string; image: string
   let idx = parseInt(firstLine, 10) - 1
   let bodyRaw = nl >= 0 ? raw.slice(nl + 1).trim() : ''
   if (!(idx >= 0 && idx < items.length)) { idx = 0; if (!bodyRaw) bodyRaw = raw }
-  if (!bodyRaw) return { ok: false, text: '', image: '', reason: 'corps vide' }
-  return { ok: true, text: HOT_HOOK_EN + NL + NL + splitAccroche(bodyRaw), image: items[idx].image || '', reason: '' }
+  if (!bodyRaw) return { ok: false, text: '', image: '', title: '', reason: 'corps vide' }
+  return { ok: true, text: HOT_HOOK_EN + NL + NL + splitAccroche(bodyRaw), image: items[idx].image || '', title: items[idx].title, reason: '' }
 }
 
 async function translateToFrench(text: string): Promise<string> {
@@ -294,7 +305,7 @@ Deno.serve(async (req: Request) => {
       // 1) ANGLAIS (source) -> Coop Hot (1488), avec la photo de l'article
       if (img) { const ok = await postPhotoToGroup(botToken, chatId, img, result.text, HOT_THREAD_EN); if (!ok) await postToGroup(botToken, chatId, result.text, HOT_THREAD_EN) }
       else await postToGroup(botToken, chatId, result.text, HOT_THREAD_EN)
-      await logDailyTopic(result.text)
+      await logDailyTopic(result.title || result.text)   // titre source = cle d'unicite 72h
       // 2) TRADUCTION FR -> Poulailler Hot (33)
       const frBody = result.text.split(NL + NL).slice(1).join(NL + NL)
       const fr = await translateToFrench(frBody)
