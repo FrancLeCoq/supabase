@@ -126,7 +126,7 @@ const SOURCES: Record<'xbiz' | 'adultfyi', HotSource> = {
   xbiz: {
     name: 'XBIZ',
     feed: 'https://www.xbiz.com/rss/news/movies-stars.xml',
-    windowH: 12,     // flux frais, plusieurs publications/jour
+    windowH: 24,     // 24h : actu plus riche (l'anti-doublon 72h evite les repets)
     imageOf: (it) => clean(between(it, '<image>', '</image>')),
   },
   adultfyi: {
