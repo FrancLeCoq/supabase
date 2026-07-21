@@ -313,10 +313,9 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
   }
 }
 
-// Copie EN + CTA -> owner uniquement (pour coller sur X). Espace (ligne vide)
-// entre le recap et l'invitation : "aere et pas fondu dans le message".
+// Copie EN -> owner uniquement (pour coller sur X). SANS lien : le lien t.me
+// dans un post X provoque un shadowban -> il se met en commentaire via /x… du bot.
 const OWNER_DM_ID = 6593812300
-const CTA_WORLD = "🌍 Don't miss any international news." + NL + '🐔 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
 // Boutons sous la copie owner : 📋 Copier (copy_text natif, si <=256 car) +
 // 📤 Publier sur X (ouvre X avec le texte deja pre-rempli).
 function xShareKeyboard(fullText: string) {
@@ -327,12 +326,11 @@ function xShareKeyboard(fullText: string) {
   return { inline_keyboard: [row] }
 }
 // Copie owner en TEXTE seul + boutons (l'owner ajoute l'image lui-même).
-async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+async function dmOwnerCopy(token: string, enText: string): Promise<void> {
   try {
-    const fullText = enText + NL + NL + cta
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: xShareKeyboard(fullText) }),
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText, disable_web_page_preview: true, reply_markup: xShareKeyboard(enText) }),
     })
   } catch (e) { console.error('dmOwnerCopy:', String(e)) }
 }
@@ -396,7 +394,7 @@ Deno.serve(async (req: Request) => {
         const enMsg = hookEn + NL + NL + enBody
         await sendWithBanner(botToken, chatId, imgUrl, enMsg, WORLD_THREAD_EN)
         // Recap info du soir (21h40) : copie EN + CTA -> owner (pour X).
-        if (kind === 'wr_night') await dmOwnerCopy(botToken, enMsg, CTA_WORLD)
+        if (kind === 'wr_night') await dmOwnerCopy(botToken, enMsg)
       } else console.error('daily-world[' + kind + ']: traduction EN vide')
       await markSent(KIND_JOB[kind] || ('world-' + kind))
       console.log('daily-world[' + kind + '] poste:', result.frText.slice(0, 80))

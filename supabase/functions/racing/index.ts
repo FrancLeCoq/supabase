@@ -33,9 +33,9 @@ const RACING_THREAD_EN = 1631
 const FR_CHAT_ID = -1004352289820   // Le Poulailler
 const RACING_THREAD_FR = 147
 const OWNER_ID = 6593812300         // DM du owner en cas d'echec
-// CTA ajoutee UNIQUEMENT dans la copie owner (pour coller sur X), jamais dans le post Telegram.
-const CTA_F1 = "🏎️Don't miss any F1 news." + NL + '🏁 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
-const CTA_MOTOGP = "🏍️Don't miss any MotoGP news." + NL + '🏁 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
+// Le lien "rejoins le poulailler" n'est PLUS collé dans la copie owner (le lien
+// t.me dans un post X provoque un shadowban) : il se met en commentaire du post
+// via les commandes /xf1 et /xmotogp du bot.
 
 // -- Reseau + Gemini -------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -214,9 +214,9 @@ async function runCommand(token: string, command: string): Promise<void> {
     const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + NL + NL + en
     const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN)
     if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
-    // Copie EN + CTA -> owner (pour coller sur X), avec boutons Copier + Publier sur X.
-    // CTA jamais dans le post Telegram.
-    await dmOwnerCopy(token, enMsg + NL + NL + (isF1 ? CTA_F1 : CTA_MOTOGP))
+    // Copie EN -> owner (pour coller sur X), avec boutons Copier + Publier sur X.
+    // Sans lien : le CTA se met en commentaire via /xf1 ou /xmotogp.
+    await dmOwnerCopy(token, enMsg)
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
   // FR -> Le Poulailler (147)

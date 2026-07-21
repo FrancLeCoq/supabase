@@ -147,10 +147,10 @@ async function logDailyTopic(slot: string, summary: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-// Copie EN + CTA -> owner uniquement (pour coller sur X). Ligne vide entre
-// le recap et l'invitation : "aere et pas fondu dans le message".
+// Copie EN -> owner uniquement (pour coller sur X). Plus de CTA/lien dans le
+// message lui-meme (le lien t.me dans un post X provoque un shadowban) : le
+// lien se met desormais EN COMMENTAIRE via les commandes /x… du bot.
 const OWNER_DM_ID = 6593812300
-const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + '🐔 Join the Chicken Coop :' + NL + '👉 T.me/LeCoqFrancis'
 // Boutons sous la copie owner : 📋 Copier (copy_text natif, si <=256 car) +
 // 📤 Publier sur X (ouvre X avec le texte deja pre-rempli).
 function xShareKeyboard(fullText: string) {
@@ -160,13 +160,12 @@ function xShareKeyboard(fullText: string) {
     : [xBtn]
   return { inline_keyboard: [row] }
 }
-// Copie owner en TEXTE seul + boutons (l'owner ajoute l'image lui-même).
-async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+// Copie owner en TEXTE seul + boutons (sans lien ; l'owner ajoute l'image).
+async function dmOwnerCopy(token: string, enText: string): Promise<void> {
   try {
-    const fullText = enText + NL + NL + cta
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: xShareKeyboard(fullText) }),
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText, disable_web_page_preview: true, reply_markup: xShareKeyboard(enText) }),
     })
   } catch (e) { console.error('dmOwnerCopy:', String(e)) }
 }
@@ -506,6 +505,7 @@ Deno.serve(async (req: Request) => {
 
   let kind: 'morning' | 'midday' | 'evening' | 'night' = 'morning'
   let dryRun = false
+  let ownerOnly = false   // n'envoie QUE la copie owner (pour X), sans poster dans les groupes
   try {
     const body = await req.json()
     if (body && (body.kind === 'midday' || body.kind === 'midi')) kind = 'midday'
@@ -513,6 +513,7 @@ Deno.serve(async (req: Request) => {
     else if (body && body.kind === 'night') kind = 'night'
     else if (body && (body.kind === 'morning' || body.kind === 'gm')) kind = 'morning'
     if (body && body.dryRun === true) dryRun = true
+    if (body && body.ownerOnly === true) ownerOnly = true
   } catch { /* corps vide -> morning */ }
 
   const gen = () => (kind === 'night')
@@ -529,13 +530,15 @@ Deno.serve(async (req: Request) => {
     try {
       const result = await gen()
       if (!result.ok) { console.error('daily-crypto[' + kind + '] échec:', result.reason); return }
+      // Mode "ownerOnly" : uniquement la copie owner (pour X), AUCUN post groupe.
+      if (ownerOnly) { await dmOwnerCopy(botToken, result.text); console.log('daily-crypto[' + kind + '] ownerOnly envoyé'); return }
       const imgUrl = imageUrlFor(kind)
       // 1) ANGLAIS (source) -> The Chicken Coop, Crypto Coop (1490)
       await sendWithBanner(botToken, chatId, imgUrl, result.text, CRYPTO_THREAD_EN)
       // Le soir on ne journalise QUE le laius (repris par le recap Night).
       if (kind !== 'night') await logDailyTopic(kind, (result as any).logText || result.text)
-      // Recap Crypto Night (20h45) : copie EN + CTA -> owner (pour X).
-      if (kind === 'night') await dmOwnerCopy(botToken, result.text, CTA_CRYPTO)
+      // Copie EN -> owner (pour X) pour le Crypto Evening (18h55) ET le Crypto Night (20h45).
+      if (kind === 'evening' || kind === 'night') await dmOwnerCopy(botToken, result.text)
       // 2) TRADUCTION FR -> Le Poulailler, Crypto Cocorico (43)
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, imgUrl, fr, FR_THREAD_CRYPTO)

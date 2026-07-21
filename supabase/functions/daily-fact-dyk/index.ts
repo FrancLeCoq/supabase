@@ -174,9 +174,9 @@ async function sendWithBanner(token: string, chatId: number, text: string): Prom
   if (!ok) await postToGroup(token, chatId, text)
 }
 
-// Copie owner (pour X) : message EN + CTA "rejoins le poulailler".
+// Copie owner (pour X) : message EN SEUL, sans lien (le lien t.me dans un post
+// X provoque un shadowban -> il se met en commentaire via /x… du bot).
 const OWNER_DM_ID = 6593812300
-const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + "🐔 Join the Chicken Coop :" + NL + "👉 T.me/LeCoqFrancis"
 // Boutons sous la copie owner : 📋 Copier (copy_text natif, si <=256 car) +
 // 📤 Publier sur X (ouvre X avec le texte deja pre-rempli).
 function xShareKeyboard(fullText: string) {
@@ -187,12 +187,11 @@ function xShareKeyboard(fullText: string) {
   return { inline_keyboard: [row] }
 }
 // Copie owner en TEXTE seul + boutons (l'owner ajoute l'image lui-même).
-async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+async function dmOwnerCopy(token: string, enText: string): Promise<void> {
   try {
-    const fullText = enText + NL + NL + cta
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: xShareKeyboard(fullText) }),
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText, disable_web_page_preview: true, reply_markup: xShareKeyboard(enText) }),
     })
   } catch (e) { console.error('dmOwnerCopy:', String(e)) }
 }
@@ -238,7 +237,7 @@ Deno.serve(async (req: Request) => {
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr)         // Le Poulailler - General
       else console.error('daily-fact-dyk: traduction FR vide')
-      await dmOwnerCopy(botToken, result.text, CTA_CRYPTO)          // copie EN + CTA -> owner (pour X)
+      await dmOwnerCopy(botToken, result.text)          // copie EN -> owner (pour X, sans lien)
       await markSent('franc-did-you-know-1')
       console.log('daily-fact-dyk poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-fact-dyk bg exception:', String(e)) }

@@ -313,9 +313,9 @@ async function markSent(jobKey: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-// -- Copie owner (pour X) : message EN + CTA "rejoins le poulailler" --------
+// -- Copie owner (pour X) : message EN SEUL (sans lien : le lien t.me dans un
+//    post X provoque un shadowban -> il se met en commentaire via /x… du bot).
 const OWNER_DM_ID = 6593812300
-const CTA_CRYPTO = "⚡ Don't miss any crypto news." + NL + "🐔 Join the Chicken Coop :" + NL + "👉 T.me/LeCoqFrancis"
 // Boutons sous la copie owner : 📋 Copier (copy_text natif Telegram, limite
 // 256 car -> seulement si ca rentre) + 📤 Publier sur X (ouvre X avec le
 // texte DEJA pre-rempli, l'owner n'a plus qu'a publier).
@@ -326,14 +326,12 @@ function xShareKeyboard(fullText: string) {
     : [xBtn]
   return { inline_keyboard: [row] }
 }
-// Copie owner en TEXTE seul + boutons (l'owner ajoute l'image depuis sa
-// bibliothèque). Boutons Copier / Publier sur X.
-async function dmOwnerCopy(token: string, enText: string, cta: string): Promise<void> {
+// Copie owner en TEXTE seul + boutons (l'owner ajoute l'image depuis sa bibliothèque).
+async function dmOwnerCopy(token: string, enText: string): Promise<void> {
   try {
-    const fullText = enText + NL + NL + cta
     await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: fullText, disable_web_page_preview: true, reply_markup: xShareKeyboard(fullText) }),
+      body: JSON.stringify({ chat_id: OWNER_DM_ID, text: enText, disable_web_page_preview: true, reply_markup: xShareKeyboard(enText) }),
     })
   } catch (e) { console.error('dmOwnerCopy:', String(e)) }
 }
@@ -371,7 +369,7 @@ Deno.serve(async (req: Request) => {
       const fr = await translateToFrench(result.text)
       if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr, FR_THREAD_CRYPTO, kind)   // FR -> Crypto Cocorico
       else console.error('daily-pump: traduction FR vide')
-      await dmOwnerCopy(botToken, result.text, CTA_CRYPTO)   // copie EN + CTA -> owner (pour X)
+      await dmOwnerCopy(botToken, result.text)   // copie EN -> owner (pour X, sans lien)
       await markSent(slot)
       console.log('daily-pump poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-pump bg exception:', String(e)) }

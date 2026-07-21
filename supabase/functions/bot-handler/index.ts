@@ -64,6 +64,20 @@ async function sendSpicyInvite(token: string, userId: number, isFR: boolean): Pr
     { reply_markup: { inline_keyboard: [[{ text: isFR ? '🔥 Entrer dans Spicy' : '🔥 Enter Spicy', url: invite }]] } })
 }
 
+// ══════════════════════════════════════════════════════════════
+//  Mentions "rejoins le poulailler" à coller EN COMMENTAIRE d'un post X.
+//  Le lien t.me dans le post LUI-MÊME provoque un shadowban : on ne le met
+//  donc plus dans les copies owner, il se poste en commentaire via /x…
+//  Chaque commande renvoie le texte + un bouton 📋 Copier (copy_text natif).
+// ══════════════════════════════════════════════════════════════
+const X_CTA: Record<string, string> = {
+  '/xf1':     "🏎️Don't miss any F1 news.\n🏁 Join the Chicken Coop :\n👉 T.me/LeCoqFrancis",
+  '/xmotogp': "🏍️Don't miss any MotoGP news.\n🏁 Join the Chicken Coop :\n👉 T.me/LeCoqFrancis",
+  '/xcrypto': "⚡ Don't miss any crypto news.\n🐔 Join the Chicken Coop :\n👉 T.me/LeCoqFrancis",
+  '/xnews':   "🌍 Don't miss any international news.\n🐔 Join the Chicken Coop :\n👉 T.me/LeCoqFrancis",
+  '/xfranc':  "Join the coop👉 t.me/LeCoqFrancis\nDiscover Francis👉 t.me/FrancisLeCoqBot\n\n◎ $FRANC on SOL:  AacckLUizxHFpSGdcN9ppEfv2UCbdqZspEhHeR8Gpump\n💎 $FRANC on TON: EQBMR3POM1sdShe7QoSVt6DDauoor4QOK4HsN7eBdoi5lrn6",
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
@@ -784,6 +798,19 @@ Deno.serve(async (req) => {
           : `🇬🇧 <b>Language set to English!</b>\n\nThe bot's messages will now be shown in English.`,
         { reply_markup: buildKeyboard(newLang === 'fr') }
       )
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  /xf1 /xmotogp /xcrypto /xnews /xfranc — mentions à coller EN
+    //  COMMENTAIRE d'un post X (le lien t.me dans le post = shadowban).
+    //  Renvoie le texte + un bouton 📋 Copier.
+    // ══════════════════════════════════════════════════════════
+    if (X_CTA[text] !== undefined) {
+      if (msg.chat?.type !== 'private') return new Response('ok')
+      const t = X_CTA[text]
+      const kb = (t.length <= 256) ? { reply_markup: { inline_keyboard: [[{ text: '📋 Copier', copy_text: { text: t } }]] } } : {}
+      await sendMessage(token, chatId, t, kb)
       return new Response('ok')
     }
 
