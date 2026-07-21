@@ -21,6 +21,49 @@ import { sendCashbackOffer } from './payments.ts'
 import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mentionsOldTestCa, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
 import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang, statusText } from './wallet.ts'
 
+// ══════════════════════════════════════════════════════════════
+//  SPICY (18+) — accès GRATUIT au groupe privé (HOLDERS_GROUP_ID),
+//  réservé aux MEMBRES de The Chicken Coop 🇬🇧 OU du Poulailler 🇫🇷.
+//  Plus AUCUNE condition de détention $FRANC. Parcours : rejoindre un
+//  groupe -> vérifier -> certifier 18 ans -> recevoir le lien d'invitation.
+//  Le recheck quotidien (daily-recheck) expulse ceux qui quittent les
+//  deux groupes et les réinvite gratuitement.
+// ══════════════════════════════════════════════════════════════
+function spicyWelcomeText(isFR: boolean): string {
+  return isFR
+    ? `🔞 <b>Bienvenue dans l'espace Spicy du Poulailler.</b>\n\nL'accès est <b>gratuit</b>, mais réservé aux <b>membres de The Chicken Coop 🇬🇧 (ou du Poulailler 🇫🇷)</b> et aux personnes <b>majeures (18+)</b>.\n\n1️⃣ Rejoins un des deux groupes\n2️⃣ Clique « ✅ J'ai rejoint »\n3️⃣ Certifie tes 18 ans → tu reçois ton lien 🔥`
+    : `🔞 <b>Welcome to the Poulailler's Spicy space.</b>\n\nAccess is <b>free</b>, but reserved for <b>members of The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷)</b> and <b>adults (18+)</b> only.\n\n1️⃣ Join one of the two groups\n2️⃣ Tap "✅ I joined"\n3️⃣ Certify you're 18+ → you get your link 🔥`
+}
+function spicyWelcomeKeyboard(isFR: boolean) {
+  return { inline_keyboard: [
+    [{ text: '🐓 The Chicken Coop 🇬🇧', url: CHICKEN_COOP_URL }, { text: '🐓 Le Poulailler 🇫🇷', url: POULAILLER_URL }],
+    [{ text: isFR ? "✅ J'ai rejoint le groupe" : '✅ I joined the group', callback_data: 'spicy_check' }],
+    [{ text: isFR ? '🔞 Je certifie avoir 18 ans' : "🔞 I certify I'm 18+", callback_data: 'spicy_18' }],
+  ] }
+}
+// Membre de Coop OU Poulailler ? (getChatMemberStatus renvoie 'member' en cas
+// d'échec réseau → fail-open : on n'empêche pas l'accès sur une erreur ponctuelle.)
+async function isCoopMember(token: string, userId: number): Promise<boolean> {
+  const ok = (s: string) => s === 'member' || s === 'administrator' || s === 'creator' || s === 'restricted'
+  const coop = await getChatMemberStatus(token, CHICKEN_COOP, userId)
+  if (ok(coop)) return true
+  const poul = await getChatMemberStatus(token, POULAILLER_FR, userId)
+  return ok(poul)
+}
+async function sendSpicyInvite(token: string, userId: number, isFR: boolean): Promise<void> {
+  const invite = await createOneTimeInvite(token, HOLDERS_GROUP_ID)
+  if (!invite) {
+    await sendMessage(token, userId, isFR
+      ? `⚠️ Impossible de générer ton lien pour le moment. Réessaie dans un instant 🐔`
+      : `⚠️ Couldn't generate your link right now. Try again in a moment 🐔`)
+    return
+  }
+  await sendMessage(token, userId, isFR
+    ? `🔞 <b>Accès Spicy débloqué !</b>\n\n⏳ Ton lien est <b>personnel</b>, valable <b>15 min</b> et <b>à usage unique</b>. Ne le partage pas. 🔥`
+    : `🔞 <b>Spicy access unlocked!</b>\n\n⏳ Your link is <b>personal</b>, valid for <b>15 min</b> and <b>single-use</b>. Don't share it. 🔥`,
+    { reply_markup: { inline_keyboard: [[{ text: isFR ? '🔥 Entrer dans Spicy' : '🔥 Enter Spicy', url: invite }]] } })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
@@ -242,48 +285,40 @@ Deno.serve(async (req) => {
         await sendCashbackOffer(cbToken, cbUser.id, cbIsFR, cbSupa, cbUserId)
       }
 
-      // ── Bouton inline "Only for Holders" (menu /start) ──
-      if (cb.data === 'holders') {
-        const userId = cbUser.id.toString()
-        const token = cbToken
-        const supabase = cbSupa
-        const isFR = await getLang(cbSupa, userId) === 'fr'
-        const tr = (fr: string, en: string) => isFR ? fr : en
-        const access = await getAccess(supabase, userId)
-      if (access.unlocked) {
-        const sym = access.reason === 'stars' ? '⭐' : (access.reason === 'ton' ? '💎' : '◎')
-        // ── Lien d'invitation à usage unique (15 min, 1 membre) ──
-        const invite = await createOneTimeInvite(token, HOLDERS_GROUP_ID)
-        if (!invite) {
-          await sendMessage(token, parseInt(userId),
-            tr(`⚠️ Impossible de générer ton accès pour le moment. Réessaie dans un instant 🐔`,
-               `⚠️ Couldn't generate your access right now. Try again in a moment 🐔`))
-          return new Response('ok')
-        }
-        await sendMessage(token, parseInt(userId),
-          tr(
-            `🔓 <b>Accès validé ${sym}</b>\n\nBienvenue dans le poulailler privé réservé aux holders 🐔\n\n⏳ Ton lien est <b>personnel</b>, valable <b>15 min</b> et <b>à usage unique</b>. Ne le partage pas — il ne marchera pour personne d'autre.`,
-            `🔓 <b>Access granted ${sym}</b>\n\nWelcome to the private holders-only henhouse 🐔\n\n⏳ Your link is <b>personal</b>, valid for <b>15 min</b> and <b>single-use</b>. Don't share it — it won't work for anyone else.`
-          ),
-          { reply_markup: { inline_keyboard: [[
-            { text: tr('🐔 Rejoindre le groupe privé', '🐔 Join the private group'), url: invite }
-          ]] } }
-        )
-      } else {
-        await sendMessage(token, parseInt(userId),
-          tr(
-            `🔒 <b>Réservé aux holders</b>\n\nCe groupe est réservé à ceux qui détiennent du <b>$FRANC</b> ou qui ont débloqué à vie avec des ⭐ Telegram.\n\nDeviens holder pour y accéder 👇`,
-            `🔒 <b>Holders only</b>\n\nThis group is reserved for those who hold <b>$FRANC</b> or who unlocked for life with Telegram ⭐.\n\nBecome a holder to get access 👇`
-          ),
-          { reply_markup: { inline_keyboard: [
-            [{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🔓 Cashback⭐', url: CASHBACK_DEEPLINK }],
-            [
-              { text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL },
-              { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }
-            ]
-          ] } }
-        )
+      // ── Bouton "🔞 Spicy" (menu /start) → ouvre le parcours Spicy gratuit ──
+      if (cb.data === 'holders' || cb.data === 'spicy_open') {
+        const isFR = await getLang(cbSupa, cbUser.id.toString()) === 'fr'
+        await sendMessage(cbToken, cbUser.id, spicyWelcomeText(isFR), { reply_markup: spicyWelcomeKeyboard(isFR) })
       }
+
+      // ── Spicy : "✅ J'ai rejoint le groupe" → vérifie l'appartenance ──
+      if (cb.data === 'spicy_check') {
+        const isFR = await getLang(cbSupa, cbUser.id.toString()) === 'fr'
+        const member = await isCoopMember(cbToken, cbUser.id)
+        if (member) {
+          await sendMessage(cbToken, cbUser.id,
+            isFR ? `✅ Parfait, tu es bien membre ! Dernière étape : certifie tes 18 ans 👇`
+                 : `✅ Great, you're a member! Last step: certify you're 18+ 👇`,
+            { reply_markup: { inline_keyboard: [[{ text: isFR ? '🔞 Je certifie avoir 18 ans' : "🔞 I certify I'm 18+", callback_data: 'spicy_18' }]] } })
+        } else {
+          await sendMessage(cbToken, cbUser.id,
+            isFR ? `❌ Tu n'es pas encore membre de The Chicken Coop ni du Poulailler. Rejoins l'un des deux, puis reclique sur ✅.`
+                 : `❌ You're not a member of The Chicken Coop or Le Poulailler yet. Join one of them, then tap ✅ again.`,
+            { reply_markup: spicyWelcomeKeyboard(isFR) })
+        }
+      }
+
+      // ── Spicy : "🔞 Je certifie avoir 18 ans" → envoie le lien si membre ──
+      if (cb.data === 'spicy_18') {
+        const isFR = await getLang(cbSupa, cbUser.id.toString()) === 'fr'
+        if (await isCoopMember(cbToken, cbUser.id)) {
+          await sendSpicyInvite(cbToken, cbUser.id, isFR)
+        } else {
+          await sendMessage(cbToken, cbUser.id,
+            isFR ? `❌ Tu dois d'abord être membre de The Chicken Coop 🇬🇧 ou du Poulailler 🇫🇷. Rejoins, puis reclique.`
+                 : `❌ You must first be a member of The Chicken Coop 🇬🇧 or Le Poulailler 🇫🇷. Join, then tap again.`,
+            { reply_markup: spicyWelcomeKeyboard(isFR) })
+        }
       }
 
       // ── Boutons inline langue (menu /start) ──
@@ -753,47 +788,13 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    //  BOUTON "🔞 Only for Holders ou ⭐" — accès au groupe privé
-    //  Donne un lien d'invitation à usage unique si holder (SOL/TON/Stars),
-    //  sinon invite à le devenir. /holders fait la même chose (alias).
+    //  SPICY (18+) — accès GRATUIT au groupe privé, réservé aux membres
+    //  de The Chicken Coop 🇬🇧 OU du Poulailler 🇫🇷 (plus de condition $FRANC).
+    //  Deep-link ?start=spicy, bouton clavier 🔞, /holders (alias) et /spicy.
     // ══════════════════════════════════════════════════════════
-    if (btnIs(text, 'holders') || text === '/holders') {
+    if (text === '/start spicy' || text === '/spicy' || text === '/holders' || btnIs(text, 'holders')) {
       if (msg.chat?.type !== 'private') return new Response('ok')
-      const access = await getAccess(supabase, userId)
-      if (access.unlocked) {
-        const sym = access.reason === 'stars' ? '⭐' : (access.reason === 'ton' ? '💎' : '◎')
-        // ── Lien d'invitation à usage unique (15 min, 1 membre) ──
-        const invite = await createOneTimeInvite(token, HOLDERS_GROUP_ID)
-        if (!invite) {
-          await sendMessage(token, parseInt(userId),
-            tr(`⚠️ Impossible de générer ton accès pour le moment. Réessaie dans un instant 🐔`,
-               `⚠️ Couldn't generate your access right now. Try again in a moment 🐔`))
-          return new Response('ok')
-        }
-        await sendMessage(token, parseInt(userId),
-          tr(
-            `🔓 <b>Accès validé ${sym}</b>\n\nBienvenue dans le poulailler privé réservé aux holders 🐔\n\n⏳ Ton lien est <b>personnel</b>, valable <b>15 min</b> et <b>à usage unique</b>. Ne le partage pas — il ne marchera pour personne d'autre.`,
-            `🔓 <b>Access granted ${sym}</b>\n\nWelcome to the private holders-only henhouse 🐔\n\n⏳ Your link is <b>personal</b>, valid for <b>15 min</b> and <b>single-use</b>. Don't share it — it won't work for anyone else.`
-          ),
-          { reply_markup: { inline_keyboard: [[
-            { text: tr('🐔 Rejoindre le groupe privé', '🐔 Join the private group'), url: invite }
-          ]] } }
-        )
-      } else {
-        await sendMessage(token, parseInt(userId),
-          tr(
-            `🔒 <b>Réservé aux holders</b>\n\nCe groupe est réservé à ceux qui détiennent du <b>$FRANC</b> ou qui ont débloqué à vie avec des ⭐ Telegram.\n\nDeviens holder pour y accéder 👇`,
-            `🔒 <b>Holders only</b>\n\nThis group is reserved for those who hold <b>$FRANC</b> or who unlocked for life with Telegram ⭐.\n\nBecome a holder to get access 👇`
-          ),
-          { reply_markup: { inline_keyboard: [
-            [{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🔓 Cashback⭐', url: CASHBACK_DEEPLINK }],
-            [
-              { text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL },
-              { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }
-            ]
-          ] } }
-        )
-      }
+      await sendMessage(token, chatId, spicyWelcomeText(isFR), { reply_markup: spicyWelcomeKeyboard(isFR) })
       return new Response('ok')
     }
 

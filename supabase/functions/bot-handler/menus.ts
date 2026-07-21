@@ -280,7 +280,7 @@ export const BTN = {
   snake:     { fr: '🐍 ChickenSnake',          en: '🐍 ChickenSnake' },
   wordsearch:{ fr: '🔍 Words searches',        en: '🔍 Words searches' },
   chickensolitaire:{ fr: '🃏 ChickenSolitaire', en: '🃏 ChickenSolitaire' },
-  holders:   { fr: '🔞 Réservé Holders ou ⭐ (Soon ❤️‍🔥)',  en: '🔞 Only for Holders or ⭐ (Soon ❤️‍🔥)' },
+  holders:   { fr: '🔞 Spicy (18+)',  en: '🔞 Spicy (18+)' },
   refresh:   { fr: '🔄 Rafraîchir le menu',    en: '🔄 Refresh menu' },
   rules:     { fr: '📜 Règles des jeux',       en: '📜 Game Rules' },
 } as const
