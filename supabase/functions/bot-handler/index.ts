@@ -1716,10 +1716,14 @@ Deno.serve(async (req) => {
       return new Response('ok')
     }
 
-    // ── Receive wallet address ────────────────────────────────
-    const { data: pending } = await supabase
-      .from('pending_connects').select('telegram_id')
-      .eq('telegram_id', userId).single()
+    // ── Receive wallet address (PRIVÉ UNIQUEMENT) ─────────────
+    // IMPORTANT : ne JAMAIS déclencher le flux "coller une adresse" dans un
+    // groupe. Sinon, si l'owner a un connect wallet en attente, chaque message
+    // envoyé dans un groupe (ex. création d'un topic) déclenchait à tort la
+    // réponse "Invalid Solana address".
+    const { data: pending } = (msg.chat?.type === 'private')
+      ? await supabase.from('pending_connects').select('telegram_id').eq('telegram_id', userId).single()
+      : { data: null }
 
     if (pending && isValidSolana(rawText)) {
       await supabase.from('pending_connects').delete().eq('telegram_id', userId)
