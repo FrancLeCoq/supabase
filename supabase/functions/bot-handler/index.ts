@@ -1721,9 +1721,25 @@ Deno.serve(async (req) => {
     // groupe. Sinon, si l'owner a un connect wallet en attente, chaque message
     // envoyé dans un groupe (ex. création d'un topic) déclenchait à tort la
     // réponse "Invalid Solana address".
-    const { data: pending } = (msg.chat?.type === 'private')
-      ? await supabase.from('pending_connects').select('telegram_id').eq('telegram_id', userId).single()
-      : { data: null }
+    // On ne récupère le "connect wallet en attente" QUE si :
+    //  • le message est en privé (jamais dans un groupe), ET
+    //  • la demande a moins de 30 minutes.
+    // Une demande abandonnée expire donc automatiquement : plus de
+    // "Invalid Solana address" à répétition sur chaque message anodin.
+    let pending: { telegram_id: string } | null = null
+    if (msg.chat?.type === 'private') {
+      const { data: pRow } = await supabase.from('pending_connects')
+        .select('telegram_id, created_at').eq('telegram_id', userId).single()
+      if (pRow) {
+        const ageMs = Date.now() - new Date(pRow.created_at).getTime()
+        if (ageMs > 30 * 60 * 1000) {
+          // Demande périmée → on la supprime et on l'ignore.
+          await supabase.from('pending_connects').delete().eq('telegram_id', userId)
+        } else {
+          pending = { telegram_id: pRow.telegram_id }
+        }
+      }
+    }
 
     if (pending && isValidSolana(rawText)) {
       await supabase.from('pending_connects').delete().eq('telegram_id', userId)
