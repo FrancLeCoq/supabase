@@ -49,8 +49,9 @@ const KIND_IMAGE: Record<string, string> = {
 function imageUrlFor(kind: string): string {
   const f = KIND_IMAGE[kind]
   if (!f) return ''
-  const v = new Date().toISOString().slice(0, 10) // cache-buster quotidien
-  return IMG_BASE + encodeURIComponent(f) + '?v=' + v
+  // URL STABLE (pas de cache-buster) : Telegram met l'image en cache et la
+  // reutilise au lieu de la re-telecharger a chaque envoi.
+  return IMG_BASE + encodeURIComponent(f)
 }
 
 type Slot = 'morning' | 'midday' | 'evening'

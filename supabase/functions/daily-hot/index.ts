@@ -29,8 +29,12 @@ const FORMAT_MODEL = 'gemini-3.1-flash-lite'
 const FR_CHAT_ID = -1004352289820
 const FR_THREAD_HOT = 33
 const HOT_THREAD_EN = 1488
+const GR_CHAT_ID = -1003962771717   // Golden Rooster (groupe spicy privé)
+const GR_THREAD_HOT = 41
 const HOT_HOOK_EN = '🌶️ Hot News:'
 const HOT_HOOK_FR = '🌶️ Actu Hot :'
+// Bouton "🌐 FR / EN" : traduction bascule gérée par bot-handler (callback 'trhot').
+const TR_BUTTON = { inline_keyboard: [[{ text: '🌐 FR / EN', callback_data: 'trhot' }]] }
 
 // -- Reseau ----------------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -290,18 +294,20 @@ async function translateToFrench(text: string): Promise<string> {
 }
 
 // -- Telegram --------------------------------------------------
-async function postToGroup(token: string, chatId: number, text: string, threadId = 0): Promise<void> {
+async function postToGroup(token: string, chatId: number, text: string, threadId = 0, replyMarkup: any = null): Promise<void> {
   const body: any = { chat_id: chatId, text, disable_web_page_preview: true }
   if (threadId) body.message_thread_id = threadId
+  if (replyMarkup) body.reply_markup = replyMarkup
   const res = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   })
   if (!res.ok) console.error('postToGroup HTTP', res.status, (await res.text()).slice(0, 160))
 }
-async function postPhotoToGroup(token: string, chatId: number, photoUrl: string, caption: string, threadId = 0): Promise<boolean> {
+async function postPhotoToGroup(token: string, chatId: number, photoUrl: string, caption: string, threadId = 0, replyMarkup: any = null): Promise<boolean> {
   try {
     const body: any = { chat_id: chatId, photo: photoUrl, caption }
     if (threadId) body.message_thread_id = threadId
+    if (replyMarkup) body.reply_markup = replyMarkup
     const res = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
@@ -338,17 +344,22 @@ Deno.serve(async (req: Request) => {
       const result = await generateHot(src)
       if (!result.ok) { console.error('daily-hot echec:', result.reason); return }
       const img = result.image
-      // 1) ANGLAIS (source) -> Coop Hot (1488), avec la photo de l'article
-      if (img) { const ok = await postPhotoToGroup(botToken, chatId, img, result.text, HOT_THREAD_EN); if (!ok) await postToGroup(botToken, chatId, result.text, HOT_THREAD_EN) }
-      else await postToGroup(botToken, chatId, result.text, HOT_THREAD_EN)
+      // 1) ANGLAIS (source) -> Coop Hot (1488) ET Golden Rooster (41), avec la
+      //    photo de l'article + le bouton "🌐 FR / EN" (traduction bascule).
+      const sendEN = async (cid: number, tid: number) => {
+        if (img) { const ok = await postPhotoToGroup(botToken, cid, img, result.text, tid, TR_BUTTON); if (!ok) await postToGroup(botToken, cid, result.text, tid, TR_BUTTON) }
+        else await postToGroup(botToken, cid, result.text, tid, TR_BUTTON)
+      }
+      await sendEN(chatId, HOT_THREAD_EN)
+      await sendEN(GR_CHAT_ID, GR_THREAD_HOT)
       await logDailyTopic(result.title || result.text)   // titre source = cle d'unicite 72h
-      // 2) TRADUCTION FR -> Poulailler Hot (33)
+      // 2) TRADUCTION FR -> Poulailler Hot (33), avec le meme bouton
       const frBody = result.text.split(NL + NL).slice(1).join(NL + NL)
       const fr = await translateToFrench(frBody)
       if (fr) {
         const frText = HOT_HOOK_FR + NL + NL + fr
-        if (img) { const okFr = await postPhotoToGroup(botToken, FR_CHAT_ID, img, frText, FR_THREAD_HOT); if (!okFr) await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT) }
-        else await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT)
+        if (img) { const okFr = await postPhotoToGroup(botToken, FR_CHAT_ID, img, frText, FR_THREAD_HOT, TR_BUTTON); if (!okFr) await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT, TR_BUTTON) }
+        else await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT, TR_BUTTON)
       } else console.error('daily-hot: traduction FR vide')
       await markSent(slot)
       console.log('daily-hot poste:', result.text.slice(0, 80))

@@ -78,6 +78,39 @@ const X_CTA: Record<string, string> = {
   '/xfranc':  "Join the coop👉 t.me/LeCoqFrancis\nDiscover Francis👉 t.me/FrancisLeCoqBot\n\n◎ $FRANC on SOL:  AacckLUizxHFpSGdcN9ppEfv2UCbdqZspEhHeR8Gpump\n💎 $FRANC on TON: EQBMR3POM1sdShe7QoSVt6DDauoor4QOK4HsN7eBdoi5lrn6",
 }
 
+// Bouton "🌐 FR / EN" placé sous les news automatiques (traduction bascule).
+const TR_BUTTON = { inline_keyboard: [[{ text: '🌐 FR / EN', callback_data: 'trhot' }]] }
+
+// Traduit un message vers l'AUTRE langue (FR↔EN) en conservant emojis/mise en
+// page. Utilisé par le bouton de traduction sous les news auto.
+async function geminiTranslateToggle(text: string): Promise<string> {
+  const key = Deno.env.get('GEMINI_API_KEY') || ''
+  if (!key) return ''
+  const prompt = [
+    'If the following message is in French, translate it to natural English. Otherwise translate it to natural French.',
+    'Keep ALL emojis exactly where they are and keep the same line breaks / layout.',
+    'Do NOT translate or alter proper names, tickers, URLs or numbers.',
+    'Output ONLY the translated message, nothing else.',
+    '',
+    'MESSAGE:',
+    text,
+  ].join('\n')
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`,
+      {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+        signal: AbortSignal.timeout(25000),
+      }
+    )
+    if (!res.ok) return ''
+    const data = await res.json()
+    const parts = data?.candidates?.[0]?.content?.parts ?? []
+    return parts.map((p: any) => p?.text ?? '').join('').trim()
+  } catch { return '' }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
@@ -297,6 +330,31 @@ Deno.serve(async (req) => {
         const cbUserId = cbUser.id.toString()
         const cbIsFR = await getLang(cbSupa, cbUserId) === 'fr'
         await sendCashbackOffer(cbToken, cbUser.id, cbIsFR, cbSupa, cbUserId)
+      }
+
+      // ── Bouton "🌐 FR / EN" sous les news auto : traduit/bascule le message ──
+      // Sans état : on lit le texte actuel (légende de photo ou texte), on le
+      // traduit vers l'autre langue et on édite le message sur place. Un
+      // nouveau clic rebascule. Le bouton est réattaché à chaque fois.
+      if (cb.data === 'trhot') {
+        const m: any = cb.message
+        const orig = (m?.caption ?? m?.text ?? '').toString()
+        if (m && orig) {
+          const translated = await geminiTranslateToggle(orig)
+          if (translated) {
+            const isCaption = m.caption !== undefined && m.caption !== null
+            const method = isCaption ? 'editMessageCaption' : 'editMessageText'
+            const payload: any = {
+              chat_id: m.chat.id, message_id: m.message_id, reply_markup: TR_BUTTON,
+            }
+            if (isCaption) payload.caption = translated
+            else { payload.text = translated; payload.disable_web_page_preview = true }
+            await fetch(`https://api.telegram.org/bot${cbToken}/${method}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            })
+          }
+        }
       }
 
       // ── Bouton "🔞 Spicy" (menu /start) → ouvre le parcours Spicy gratuit ──

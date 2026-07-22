@@ -269,9 +269,9 @@ async function translateToFrench(text: string): Promise<string> {
 // -- Telegram + bandeau ----------------------------------------
 const IMG_BASE = 'https://mubqtnqulpyehkgubhnh.supabase.co/storage/v1/object/public/assets/'
 function imageUrl(kind: 'pump' | 'dump'): string {
-  const v = new Date().toISOString().slice(0, 10)
+  // URL STABLE (pas de cache-buster) : Telegram reutilise l'image en cache.
   const file = kind === 'dump' ? 'Cocorico Dump.png' : 'Cocorico Pump.png'
-  return IMG_BASE + encodeURIComponent(file) + '?v=' + v
+  return IMG_BASE + encodeURIComponent(file)
 }
 async function postToGroup(token: string, chatId: number, text: string, threadId = 0): Promise<void> {
   const body: any = { chat_id: chatId, text, disable_web_page_preview: true }

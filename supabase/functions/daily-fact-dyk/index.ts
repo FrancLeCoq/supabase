@@ -148,8 +148,8 @@ async function translateToFrench(text: string): Promise<string> {
 // -- Telegram + bandeau ----------------------------------------
 const IMG_BASE = 'https://mubqtnqulpyehkgubhnh.supabase.co/storage/v1/object/public/assets/'
 function imageUrl(): string {
-  const v = new Date().toISOString().slice(0, 10)
-  return IMG_BASE + encodeURIComponent('Did you know.png') + '?v=' + v
+  // URL STABLE (pas de cache-buster) : Telegram reutilise l'image en cache.
+  return IMG_BASE + encodeURIComponent('Did you know.png')
 }
 async function postToGroup(token: string, chatId: number, text: string): Promise<void> {
   const res = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
