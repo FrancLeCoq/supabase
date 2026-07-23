@@ -877,7 +877,13 @@ Deno.serve(async (req) => {
     //  de The Chicken Coop 🇬🇧 OU du Poulailler 🇫🇷 (plus de condition $FRANC).
     //  Deep-link ?start=spicy, bouton clavier 🔞, /holders (alias) et /spicy.
     // ══════════════════════════════════════════════════════════
-    if (text === '/start spicy' || text === '/spicy' || text === '/holders' || btnIs(text, 'holders')) {
+    // NB : /only for holders/i capte les ANCIENS libellés du bouton Spicy encore
+    // en cache chez certains (ex. « 🔞 Only for Holders or ⭐ (Soon …) »). Sans
+    // ça, ce clic tombait dans le flux « message libre » → réponse IA parasite
+    // (« You've got an eye… ») + notif owner injustifiée. On le renvoie vers
+    // l'accueil Spicy fixe : pas d'IA, pas de notif.
+    if (text === '/start spicy' || text === '/spicy' || text === '/holders' || btnIs(text, 'holders')
+        || /only for holders/i.test(rawText)) {
       if (msg.chat?.type !== 'private') return new Response('ok')
       await sendMessage(token, chatId, spicyWelcomeText(isFR), { reply_markup: spicyWelcomeKeyboard(isFR) })
       return new Response('ok')
