@@ -30,7 +30,9 @@ const FR_CHAT_ID = -1004352289820
 const FR_THREAD_HOT = 33
 const HOT_THREAD_EN = 1488
 const GR_CHAT_ID = -1003962771717   // Golden Rooster (groupe spicy privé)
-const GR_THREAD_HOT = 41
+// 0 = topic General (t.me/c/3962771717/1). Pour le General d'un forum, on
+// n'envoie PAS de message_thread_id : Telegram route vers General par défaut.
+const GR_THREAD_HOT = 0
 const HOT_HOOK_EN = '🌶️ Hot News:'
 const HOT_HOOK_FR = '🌶️ Actu Hot :'
 // Bouton "🌐 FR / EN" : traduction bascule gérée par bot-handler (callback 'trhot').
