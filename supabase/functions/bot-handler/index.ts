@@ -31,13 +31,12 @@ import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang
 // ══════════════════════════════════════════════════════════════
 function spicyWelcomeText(isFR: boolean): string {
   return isFR
-    ? `🔞 <b>Bienvenue dans l'espace Spicy du Poulailler.</b>\n\nL'accès est <b>gratuit</b>, mais réservé aux <b>membres de The Chicken Coop 🇬🇧 (ou du Poulailler 🇫🇷)</b> et aux personnes <b>majeures (18+)</b>.\n\n1️⃣ Rejoins un des deux groupes\n2️⃣ Clique « ✅ J'ai rejoint »\n3️⃣ Certifie tes 18 ans → tu reçois ton lien 🔥`
-    : `🔞 <b>Welcome to the Poulailler's Spicy space.</b>\n\nAccess is <b>free</b>, but reserved for <b>members of The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷)</b> and <b>adults (18+)</b> only.\n\n1️⃣ Join one of the two groups\n2️⃣ Tap "✅ I joined"\n3️⃣ Certify you're 18+ → you get your link 🔥`
+    ? `🔞 <b>Bienvenue dans l'espace Spicy du Poulailler.</b>\n\nL'accès est <b>gratuit</b>, mais réservé aux <b>membres de The Chicken Coop 🇬🇧 (ou du Poulailler 🇫🇷)</b> et aux personnes <b>majeures (18+)</b>.\n\n1️⃣ Rejoins un des deux groupes\n2️⃣ Certifie tes 18 ans → tu reçois ton lien 🔥`
+    : `🔞 <b>Welcome to the Poulailler's Spicy space.</b>\n\nAccess is <b>free</b>, but reserved for <b>members of The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷)</b> and <b>adults (18+)</b> only.\n\n1️⃣ Join one of the two groups\n2️⃣ Certify you're 18+ → you get your link 🔥`
 }
 function spicyWelcomeKeyboard(isFR: boolean) {
   return { inline_keyboard: [
     [{ text: '🐓 The Chicken Coop 🇬🇧', url: CHICKEN_COOP_URL }, { text: '🐓 Le Poulailler 🇫🇷', url: POULAILLER_URL }],
-    [{ text: isFR ? "✅ J'ai rejoint le groupe" : '✅ I joined the group', callback_data: 'spicy_check' }],
     [{ text: isFR ? '🔞 Je certifie avoir 18 ans' : "🔞 I certify I'm 18+", callback_data: 'spicy_18' }],
   ] }
 }
