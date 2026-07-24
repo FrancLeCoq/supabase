@@ -690,7 +690,7 @@ Deno.serve(async (req) => {
         const info = await (await fetch(`https://api.telegram.org/bot${bToken}/getWebhookInfo`)).json()
         const hookUrl = info?.result?.url
         if (!hookUrl) { await sendMessage(bToken, chatId, '❌ Webhook URL introuvable (getWebhookInfo).'); return new Response('ok') }
-        const allowed = ['message','edited_message','callback_query','channel_post','business_connection','business_message','edited_business_message','deleted_business_messages']
+        const allowed = ['message','edited_message','callback_query','channel_post','chat_member','business_connection','business_message','edited_business_message','deleted_business_messages']
         const res = await fetch(`https://api.telegram.org/bot${bToken}/setWebhook`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: hookUrl, allowed_updates: allowed, drop_pending_updates: false }),
