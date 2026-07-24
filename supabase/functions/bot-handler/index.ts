@@ -896,6 +896,10 @@ Deno.serve(async (req) => {
         || /only for holders/i.test(rawText)) {
       if (msg.chat?.type !== 'private') return new Response('ok')
       await sendMessage(token, chatId, spicyWelcomeText(isFR), { reply_markup: spicyWelcomeKeyboard(isFR) })
+      // Installe aussi le clavier de menu principal (jeux, wallet…) pour que
+      // l'utilisateur arrivé par le deep-link ?start=spicy ne se retrouve pas
+      // sans navigation une fois la procédure Spicy terminée.
+      await sendMessage(token, chatId, tr('💡 Utilise le menu ci-dessous pour naviguer 👇', '💡 Use the menu below to navigate 👇'), { reply_markup: buildKeyboard(isFR) })
       return new Response('ok')
     }
 
