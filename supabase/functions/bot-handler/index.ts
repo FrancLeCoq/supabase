@@ -169,6 +169,17 @@ Deno.serve(async (req) => {
               name: [u.first_name, u.last_name].filter(Boolean).join(' ') || null,
               status: 'member'
             }, { onConflict: 'telegram_id' })
+            // Petit mot de bienvenue en DM, UNIQUEMENT sur une vraie nouvelle
+            // arrivée (pas une promotion admin d'un membre déjà présent).
+            const wasIn = ['member', 'administrator', 'creator', 'restricted'].includes(cm.old_chat_member?.status || '')
+            if (!wasIn) {
+              try {
+                const isFR = await getLang(supabase, u.id.toString()) === 'fr'
+                await sendMessage(token, u.id, isFR
+                  ? '🔞 Bienvenue dans le poulailler interdit 🔞'
+                  : '🔞 Welcome to the Forbidden Coop 🔞')
+              } catch (_) { /* la personne n'a peut-être pas ouvert le bot en privé */ }
+            }
           } else {
             // left / kicked / banned
             await supabase.from('group_members')
