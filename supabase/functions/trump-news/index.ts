@@ -26,7 +26,7 @@ const FORMAT_MODEL = 'gemini-3.1-flash-lite'
 const FEED = 'https://trumpstruth.org/feed'
 const COOP_CHAT = -1003842240104, COOP_THREAD = 2115   // The Chicken Coop (EN)
 const POUL_CHAT = -1004352289820, POUL_THREAD = 519    // Le Poulailler (FR)
-const WINDOW_MIN = 25                                  // ne poste que les posts récents
+const WINDOW_MIN = 20                                  // cron 15 min + 5 min de marge (le verrou évite les doublons)
 const DEDUP_TTL = 7 * 24 * 3600                        // verrou anti-doublon (7 j)
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 
