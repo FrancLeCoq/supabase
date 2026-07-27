@@ -142,12 +142,11 @@ async function tgCall(method: string, body: any): Promise<boolean> {
 const isVideo = (u: string) => /\.(mp4|gif)(\?|$)/i.test(u)
 
 // Poste 1 tweet Trump : header + texte + média(s), dans (chat, thread).
-async function postPost(chat: number, thread: number, header: string, text: string, media: string[]) {
+async function postPost(chat: number, thread: number, header: string, text: string, media: string[]): Promise<boolean> {
   const caption = (header + (text ? '\n\n' + esc(text) : '')).slice(0, 1024)
   const longText = (header + (text ? '\n\n' + esc(text) : ''))
   if (media.length === 0) {
-    await tgCall('sendMessage', { chat_id: chat, message_thread_id: thread, text: longText, parse_mode: 'HTML', disable_web_page_preview: false })
-    return
+    return await tgCall('sendMessage', { chat_id: chat, message_thread_id: thread, text: longText, parse_mode: 'HTML', disable_web_page_preview: false })
   }
   // Si le texte dépasse la limite de légende, on l'envoie d'abord en message.
   const capTooLong = longText.length > 1024
@@ -159,15 +158,34 @@ async function postPost(chat: number, thread: number, header: string, text: stri
     const key = isVideo(m) ? 'video' : 'photo'
     const body: any = { chat_id: chat, message_thread_id: thread, [key]: m }
     if (cap) { body.caption = cap; body.parse_mode = 'HTML' }
-    await tgCall(method, body)
-  } else {
-    const arr = media.map((m, i) => {
-      const item: any = { type: isVideo(m) ? 'video' : 'photo', media: m }
-      if (i === 0 && cap) { item.caption = cap; item.parse_mode = 'HTML' }
-      return item
-    })
-    await tgCall('sendMediaGroup', { chat_id: chat, message_thread_id: thread, media: arr })
+    return await tgCall(method, body)
   }
+  const arr = media.map((m, i) => {
+    const item: any = { type: isVideo(m) ? 'video' : 'photo', media: m }
+    if (i === 0 && cap) { item.caption = cap; item.parse_mode = 'HTML' }
+    return item
+  })
+  return await tgCall('sendMediaGroup', { chat_id: chat, message_thread_id: thread, media: arr })
+}
+
+// Récupère le post original le PLUS RÉCENT (sans filtre de fenêtre) — pour testOne.
+async function latestOriginal(): Promise<TPost | null> {
+  const res = await tfetch(FEED, { headers: { 'User-Agent': UA } })
+  if (!res.ok) return null
+  const xml = await res.text()
+  const raw = xml.split('<item>').slice(1).map((s) => s.split('</item>')[0])
+  const isRepost = (d: string) => /RT:\s*https?:\/\//i.test(d) || d.indexOf('quote-inline') >= 0
+  let best: TPost | null = null
+  for (const it of raw) {
+    const link = between(it, '<link>', '</link>').trim()
+    const descr = between(it, '<description>', '</description>')
+    const oid = between(it, '<truth:originalId>', '</truth:originalId>').trim()
+    const pub = between(it, '<pubDate>', '</pubDate>').trim()
+    if (!oid || !link || isRepost(descr)) continue
+    const t = pub ? new Date(pub).getTime() : 0
+    if (!best || t > best.t) best = { link, oid, text: cleanText(descr), t }
+  }
+  return best
 }
 
 interface TPost { link: string; oid: string; text: string; t: number }
@@ -204,13 +222,26 @@ Deno.serve(async (req: Request) => {
   if (!botToken || !geminiKey) return new Response('missing config', { status: 500 })
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-  let dryRun = false
-  try { const b = await req.json(); if (b && b.dryRun === true) dryRun = true } catch { /* ok */ }
+  let dryRun = false, testOne = false
+  try { const b = await req.json(); if (b && b.dryRun === true) dryRun = true; if (b && b.testOne === true) testOne = true } catch { /* ok */ }
 
   if (dryRun) {
     const { posts, reason } = await collectFresh()
     const preview = posts.length ? { ...posts[posts.length - 1], media: await fetchMedia(posts[posts.length - 1].link) } : null
     return new Response(JSON.stringify({ count: posts.length, reason, preview }, null, 2),
+      { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  // Test de bout en bout : poste LE dernier post original dans les 2 topics.
+  if (testOne) {
+    const p = await latestOriginal()
+    if (!p) return new Response(JSON.stringify({ error: 'aucun post original trouvé' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    const media = await fetchMedia(p.link)
+    const coopOk = await postPost(COOP_CHAT, COOP_THREAD, HEADER_EN, p.text, media)
+    const fr = p.text ? await translateFR(p.text) : ''
+    const poulOk = await postPost(POUL_CHAT, POUL_THREAD, HEADER_FR, fr || p.text, media)
+    await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)   // évite un doublon par le cron
+    return new Response(JSON.stringify({ oid: p.oid, mediaCount: media.length, coopOk, poulOk, text: p.text.slice(0, 150), fr: fr.slice(0, 150) }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
