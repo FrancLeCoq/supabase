@@ -346,26 +346,14 @@ Deno.serve(async (req: Request) => {
       const result = await generateHot(src)
       if (!result.ok) { console.error('daily-hot echec:', result.reason); return }
       const img = result.image
-      // 1) ANGLAIS (source) -> Coop Hot (1488) ET Golden Rooster (41).
-      //    Le bouton "🌐 FR / EN" n'est ajouté QUE dans le groupe privé
-      //    (Golden Rooster) : la Coop est déjà en anglais, le bouton n'y sert pas.
-      const sendEN = async (cid: number, tid: number, rm: any = null) => {
-        if (img) { const ok = await postPhotoToGroup(botToken, cid, img, result.text, tid, rm); if (!ok) await postToGroup(botToken, cid, result.text, tid, rm) }
-        else await postToGroup(botToken, cid, result.text, tid, rm)
-      }
-      await sendEN(chatId, HOT_THREAD_EN)                    // Coop : sans bouton
-      await sendEN(GR_CHAT_ID, GR_THREAD_HOT, TR_BUTTON)     // Golden Rooster : avec bouton
+      // Hot news EXCLUSIVEMENT dans le groupe privé (Golden Rooster / General),
+      // en anglais + bouton "🌐 FR / EN". Plus AUCUN envoi dans The Chicken Coop
+      // ni dans Le Poulailler.
+      if (img) { const ok = await postPhotoToGroup(botToken, GR_CHAT_ID, img, result.text, GR_THREAD_HOT, TR_BUTTON); if (!ok) await postToGroup(botToken, GR_CHAT_ID, result.text, GR_THREAD_HOT, TR_BUTTON) }
+      else await postToGroup(botToken, GR_CHAT_ID, result.text, GR_THREAD_HOT, TR_BUTTON)
       await logDailyTopic(result.title || result.text)   // titre source = cle d'unicite 72h
-      // 2) TRADUCTION FR -> Poulailler Hot (33), SANS bouton (déjà en français)
-      const frBody = result.text.split(NL + NL).slice(1).join(NL + NL)
-      const fr = await translateToFrench(frBody)
-      if (fr) {
-        const frText = HOT_HOOK_FR + NL + NL + fr
-        if (img) { const okFr = await postPhotoToGroup(botToken, FR_CHAT_ID, img, frText, FR_THREAD_HOT); if (!okFr) await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT) }
-        else await postToGroup(botToken, FR_CHAT_ID, frText, FR_THREAD_HOT)
-      } else console.error('daily-hot: traduction FR vide')
       await markSent(slot)
-      console.log('daily-hot poste:', result.text.slice(0, 80))
+      console.log('daily-hot poste (prive):', result.text.slice(0, 80))
     } catch (e) { console.error('daily-hot bg exception:', String(e)) }
   })()
   ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
