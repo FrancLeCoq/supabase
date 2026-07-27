@@ -140,6 +140,13 @@ async function tgCall(method: string, body: any): Promise<boolean> {
   } catch (e) { console.error(method, 'ex', String(e)); return false }
 }
 const isVideo = (u: string) => /\.(mp4|gif)(\?|$)/i.test(u)
+// Réessaie une fois : au 1er envoi Telegram récupère le média « à froid » et
+// peut échouer (timeout CDN) ; au 2e il est en cache -> ça passe.
+async function tgSend(method: string, body: any): Promise<boolean> {
+  if (await tgCall(method, body)) return true
+  await new Promise((r) => setTimeout(r, 1800))
+  return await tgCall(method, body)
+}
 
 // Poste 1 tweet Trump : header + texte + média(s), dans (chat, thread).
 async function postPost(chat: number, thread: number, header: string, text: string, media: string[]): Promise<boolean> {
@@ -158,14 +165,14 @@ async function postPost(chat: number, thread: number, header: string, text: stri
     const key = isVideo(m) ? 'video' : 'photo'
     const body: any = { chat_id: chat, message_thread_id: thread, [key]: m }
     if (cap) { body.caption = cap; body.parse_mode = 'HTML' }
-    return await tgCall(method, body)
+    return await tgSend(method, body)
   }
   const arr = media.map((m, i) => {
     const item: any = { type: isVideo(m) ? 'video' : 'photo', media: m }
     if (i === 0 && cap) { item.caption = cap; item.parse_mode = 'HTML' }
     return item
   })
-  return await tgCall('sendMediaGroup', { chat_id: chat, message_thread_id: thread, media: arr })
+  return await tgSend('sendMediaGroup', { chat_id: chat, message_thread_id: thread, media: arr })
 }
 
 // Récupère le post original le PLUS RÉCENT (sans filtre de fenêtre) — pour testOne.
