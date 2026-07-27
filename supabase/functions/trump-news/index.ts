@@ -124,8 +124,20 @@ async function translateFR(text: string): Promise<string> {
 }
 
 // -- Telegram --------------------------------------------------
-const HEADER_EN = '🇺🇸 <b>Donald J. Trump</b> — Truth Social'
-const HEADER_FR = '🇺🇸 <b>Donald J. Trump</b> — Truth Social'
+// En-tête daté, dans la langue du groupe (heure de Paris). Le Coop (EN) reçoit
+// un format anglais/US, le Poulailler (FR) un format français.
+function headerEN(t: number): string {
+  const d = new Date(t)
+  const date = d.toLocaleDateString('en-US', { timeZone: 'Europe/Paris' })
+  const time = d.toLocaleTimeString('en-US', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })
+  return `🇺🇸 <b>Original post by Donald J. Trump on Truth Social</b> — ${date} at ${time} 👇`
+}
+function headerFR(t: number): string {
+  const d = new Date(t)
+  const date = d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })
+  const time = d.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })
+  return `🇺🇸 <b>Post original de Donald J. Trump sur Truth Social</b> le ${date} à ${time} 👇`
+}
 function esc(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 
 async function tgCall(method: string, body: any): Promise<boolean> {
@@ -244,9 +256,9 @@ Deno.serve(async (req: Request) => {
     const p = await latestOriginal()
     if (!p) return new Response(JSON.stringify({ error: 'aucun post original trouvé' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     const media = await fetchMedia(p.link)
-    const coopOk = await postPost(COOP_CHAT, COOP_THREAD, HEADER_EN, p.text, media)
+    const coopOk = await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media)
     const fr = p.text ? await translateFR(p.text) : ''
-    const poulOk = await postPost(POUL_CHAT, POUL_THREAD, HEADER_FR, fr || p.text, media)
+    const poulOk = await postPost(POUL_CHAT, POUL_THREAD, headerFR(p.t), fr || p.text, media)
     await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)   // évite un doublon par le cron
     return new Response(JSON.stringify({ oid: p.oid, mediaCount: media.length, coopOk, poulOk, text: p.text.slice(0, 150), fr: fr.slice(0, 150) }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -262,10 +274,10 @@ Deno.serve(async (req: Request) => {
         if (!first) continue
         const media = await fetchMedia(p.link)
         // EN -> Coop
-        await postPost(COOP_CHAT, COOP_THREAD, HEADER_EN, p.text, media)
+        await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media)
         // FR -> Poulailler
         const fr = p.text ? await translateFR(p.text) : ''
-        await postPost(POUL_CHAT, POUL_THREAD, HEADER_FR, fr || p.text, media)
+        await postPost(POUL_CHAT, POUL_THREAD, headerFR(p.t), fr || p.text, media)
         console.log('trump-news poste', p.oid, 'media', media.length, p.text.slice(0, 60))
       }
     } catch (e) { console.error('trump-news bg ex:', String(e)) }

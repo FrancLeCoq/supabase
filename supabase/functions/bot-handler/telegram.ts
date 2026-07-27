@@ -11,8 +11,8 @@ export const CHICKEN_COOP = -1003842240104
 export const POULAILLER_FR = -1004352289820
 
 // Topics (message_thread_id) de chaque rubrique, par groupe.
-export const FR_TOPIC = { coop: 1, games: 29, wallet: 31, hotwings: 33, cryptocoop: 43, worldroost: 45 }
-export const EN_TOPIC = { coop: 1, games: 1300, wallet: 405, hotwings: 1488, cryptocoop: 1490, worldroost: 1489 }
+export const FR_TOPIC = { coop: 1, games: 29, wallet: 31, hotwings: 33, cryptocoop: 43, worldroost: 45, trump: 519 }
+export const EN_TOPIC = { coop: 1, games: 1300, wallet: 405, hotwings: 1488, cryptocoop: 1490, worldroost: 1489, trump: 2115 }
 // Recopie un message de setup dans un topic d'un groupe, puis l'épingle.
 // ⚠️ Le topic « General » (racine du forum) a l'id 1 : Telegram REFUSE message_thread_id=1
 // ("message thread not found") → pour le General on N'ENVOIE PAS de thread_id.

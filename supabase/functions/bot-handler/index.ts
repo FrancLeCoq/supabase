@@ -1199,6 +1199,34 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
+    //  /setupTrump — présentation du topic "Trump News" (🇺🇸)
+    // ══════════════════════════════════════════════════════════
+    if (text === '/setuptrump') {
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
+      await deleteMessage(token, chatId, messageId)
+      await mirrorEnSetup(token, EN_TOPIC.trump,
+        `🇺🇸 <b>Trump News — live from Truth Social</b>\n\n` +
+        `Every <b>original</b> post from Donald J. Trump on Truth Social, mirrored here automatically — text, photos & videos — within minutes. 🦅\n\n` +
+        `💰 Trump wanted to charge up to <b>$100,000/month</b> for early access to his posts.\n` +
+        `We rebuilt it ourselves — and here it's <b>100% FREE</b>.\n` +
+        `<b>That's the spirit of the coop.</b> 🐔\n\n` +
+        `<i>Reposts (RT) are skipped — only his own original posts.</i>`,
+        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
+      )
+      await mirrorFrSetup(token, FR_TOPIC.trump,
+        `🇺🇸 <b>Trump News — en direct de Truth Social</b>\n\n` +
+        `Chaque post <b>original</b> de Donald J. Trump sur Truth Social, recopié ici automatiquement — texte, photos & vidéos — en quelques minutes. 🦅\n\n` +
+        `💰 Trump voulait faire payer jusqu'à <b>100 000 $/mois</b> pour accéder en primeur à ses posts.\n` +
+        `Nous l'avons recréé nous-mêmes — et ici, c'est <b>100% GRATUIT</b>.\n` +
+        `<b>C'est ça, l'esprit du poulailler.</b> 🐔\n\n` +
+        `<i>Les reposts (RT) sont ignorés — uniquement ses posts originaux.</i>`,
+        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
+      )
+      await sendMessage(token, chatId, tr('✅ Trump News publié et épinglé dans les deux groupes.', '✅ Trump News posted and pinned in both groups.'))
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  /setupcryptocoop — présentation du topic Crypto (💰)
     // ══════════════════════════════════════════════════════════
     if (text === '/setupcryptocoop') {
