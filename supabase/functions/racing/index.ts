@@ -215,7 +215,7 @@ async function runCommand(token: string, command: string): Promise<void> {
   // Le programme du week-end (/F1we /GPwe) est epingle dans chaque groupe.
   const doPin = type === 'we'
   // En-tête du week-end : on ajoute la saison + drapeau à damier.
-  const weSuffix = (type === 'we') ? ' ' + new Date().getUTCFullYear() + ' 🏁' : ''
+  const weSuffix = (type === 'we') ? ' 🏁' : ''
   // Séparateur titre→corps : pour /F1we /GPwe, on colle le circuit juste sous
   // le titre (pas de ligne vide) ; ailleurs on garde une ligne vide aérée.
   const headSep = (type === 'we') ? NL : NL + NL
