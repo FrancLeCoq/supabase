@@ -104,7 +104,7 @@ function searchPrompt(sportLong: string, type: RType): string {
 function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RType, facts: string): string {
   // Meme modele de classement pour F1 et MotoGP : pilote - ecurie - points.
   // (Telegram n'affiche pas de vrais logos dans un message texte.)
-  const standingsFmt = '<rank emoji> <first-name initial>. <Last name> - <Team> - <points> pts'
+  const standingsFmt = '<rank emoji> <first-name initial>. <Last name>, <Team> - <points>p'
   const task: Record<RType, string> = {
     essais: 'Write a punchy summary of the PRACTICE highlights. HARD LIMIT: 280 characters. Lead with the standout fact (fastest driver/rider + key moment). No standings.',
     qualifs: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took pole; then a blank line; then (2) the FULL qualifying classification, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team) - time/gap", then "2️⃣ ...", "3️⃣ ...". Use 🔟 for tenth; for positions above ten combine digit emojis (e.g. 1️⃣1️⃣, 1️⃣2️⃣). Never write "P1"/"P2".',
@@ -115,10 +115,10 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
       + '(1) A line starting with "📍" IMMEDIATELY followed by the circuit name, no space after the pin (e.g. "📍Circuit de Zandvoort"). '
       + '(2) The next line: the country FLAG emoji + a space + the country name (e.g. "🇳🇱 Netherlands" / "🇳🇱 Pays-Bas"). '
       + '(3) A blank line. '
-      + '(4) The schedule GROUPED BY DAY, in chronological order. For EACH day that has sessions: first a line "👉 <Day> :" (e.g. "👉 Friday :" / "👉 Vendredi :"), then BELOW it ONE bullet per session formatted "• <time> UTC – <Session name>". Use the language time notation (English "14:30", French "14h30"). '
+      + '(4) The schedule GROUPED BY DAY, in chronological order, as ONE SINGLE CONTIGUOUS BLOCK with NO blank line between days. For EACH day that has sessions: first a line "👉 <Day> :" (e.g. "👉 Friday :" / "👉 Vendredi :"), then directly BELOW it ONE bullet per session formatted "• <time> UTC – <Session name>". The very next day header comes on the immediately following line (NO empty line separating one day from the next). Use the language time notation (English "14:30", French "14h30"). '
       + '(5) A blank line, then a header line exactly "🏆 World Championship". '
       + '(6) Then the FULL current standings from the facts, ONE line per driver/rider IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣, 1️⃣2️⃣), formatted EXACTLY like this: "' + standingsFmt + '". For the driver/rider name use ONLY the first-name INITIAL + "." + the FULL last name (e.g. "K. Antonelli", "L. Hamilton"). '
-      + 'Keep the exact order, teams and points from the facts. Shorten these team names: "Racing Bulls" -> "Racing B.", "Aston Martin" -> "Aston M.". NO 280-character limit here.',
+      + 'Keep the exact order, teams and points from the facts. Shorten these team names: "Racing Bulls" -> "Racing B.", "Aston Martin" -> "Aston M.", "Red Bull" -> "Red B.". NO 280-character limit here.',
     news: 'Write the freshest paddock news as 3 to 5 short punchy bullet points. Each bullet MUST start with "👉 " and be a single sentence. Separate EACH bullet with a BLANK LINE (an empty line between bullets, so they are airy and never glued together). Keep it factual. Max ~600 characters.',
   }
   return [
@@ -195,7 +195,7 @@ async function dmOwner(token: string, text: string) {
 
 // Raccourcit les noms d'écuries trop longs (garanti, en plus de la consigne IA).
 function shortenTeams(s: string): string {
-  return (s || '').split('Racing Bulls').join('Racing B.').split('Aston Martin').join('Aston M.')
+  return (s || '').split('Racing Bulls').join('Racing B.').split('Aston Martin').join('Aston M.').split('Red Bull').join('Red B.')
 }
 
 // -- Coeur : recherche + EN + FR + publication -----------------
@@ -216,11 +216,14 @@ async function runCommand(token: string, command: string): Promise<void> {
   const doPin = type === 'we'
   // En-tête du week-end : on ajoute la saison + drapeau à damier.
   const weSuffix = (type === 'we') ? ' ' + new Date().getUTCFullYear() + ' 🏁' : ''
+  // Séparateur titre→corps : pour /F1we /GPwe, on colle le circuit juste sous
+  // le titre (pas de ligne vide) ; ailleurs on garde une ligne vide aérée.
+  const headSep = (type === 'we') ? NL : NL + NL
 
   // EN -> The Chicken Coop (1631)
   const en = shortenTeams(await formatCall(formatPrompt('English', sportShort, type, facts)))
   if (en && en.toUpperCase().indexOf('NONE') !== 0) {
-    const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + weSuffix + NL + NL + en
+    const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + weSuffix + headSep + en
     const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN)
     if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
     // Copie EN -> owner (pour coller sur X), avec boutons Copier + Publier sur X.
@@ -231,7 +234,7 @@ async function runCommand(token: string, command: string): Promise<void> {
   // FR -> Le Poulailler (147)
   const fr = shortenTeams(await formatCall(formatPrompt('French', sportShort, type, facts)))
   if (fr && fr.toUpperCase().indexOf('NONE') !== 0) {
-    const idFr = await post(token, FR_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + NL + NL + fr, RACING_THREAD_FR)
+    const idFr = await post(token, FR_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + headSep + fr, RACING_THREAD_FR)
     if (doPin) await pinMessage(token, FR_CHAT_ID, idFr)
   } else { console.error('racing[' + command + '] FR vide/NONE') }
 
