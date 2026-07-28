@@ -237,7 +237,9 @@ async function generateMove(kind: 'pump' | 'dump'): Promise<{ ok: boolean; text:
   if (!coin) return { ok: false, text: '', reason: '[Cocorico ' + (kind === 'dump' ? 'Dump' : 'Pump') + '] ' + reason }
   const detail = await fetchCoinDetail(coin.id)
   const [cp, catalyst, franc] = await Promise.all([chainProject(coin, detail), groundedCatalyst(coin, kind), francMcBlock()])
-  const descriptif = cp + NL + '🚀 Catalyst: ' + catalyst
+  // Fusée pour le pump (hausse), éclair pour le dump (chute soudaine).
+  const catalystIcon = kind === 'dump' ? '⚡' : '🚀'
+  const descriptif = cp + NL + catalystIcon + ' Catalyst: ' + catalyst
   const pct = (coin.change >= 0 ? '+' : '') + coin.change.toFixed(1) + '%'
   const header = kind === 'dump' ? '🐓 Cocorico Dump 📉' : '🐓 Cocorico Pump 🚀'
   const line = kind === 'dump' ? 'Biggest loser in the Top 500 on the last 24h:' : 'Biggest gainer in the Top 500 on the last 24h:'
