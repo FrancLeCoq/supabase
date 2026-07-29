@@ -367,6 +367,34 @@ Deno.serve(async (req) => {
         }
       }
 
+      // ── Breaking news perso : ✅ Publier / ❌ Annuler (OWNER) ──
+      if (cb.data === 'bn_pub' || cb.data === 'bn_cancel') {
+        if (cbUser.id.toString() !== OWNER_ID) return new Response('ok')
+        const { data: draft } = await cbSupa.from('breaking_pending').select('*').eq('owner_id', cbUser.id).maybeSingle()
+        if (!draft) { await sendMessage(cbToken, cbUser.id, '⚠️ Brouillon introuvable (déjà publié ou expiré).'); return new Response('ok') }
+        if (cb.data === 'bn_cancel') {
+          await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id)
+          await sendMessage(cbToken, cbUser.id, '❌ Breaking news annulée.')
+          return new Response('ok')
+        }
+        // Catégorie → emoji + topics (EN Chicken Coop / FR Poulailler).
+        const BN_PUB: Record<string, { emoji: string; en: number; fr: number }> = {
+          f1:         { emoji: '🏎️', en: 1631, fr: 147 },
+          motogp:     { emoji: '🏍️', en: 1631, fr: 147 },
+          worldroost: { emoji: '🌍', en: 1489, fr: 45 },
+          crypto:     { emoji: '⚡', en: 1490, fr: 43 },
+        }
+        const m = BN_PUB[String(draft.category)]
+        if (!m) { await sendMessage(cbToken, cbUser.id, '⚠️ Catégorie inconnue, publication annulée.'); await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id); return new Response('ok') }
+        const enMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.en}`
+        const frMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.fr}`
+        await sendMessage(cbToken, CHICKEN_COOP, enMsg, { message_thread_id: m.en, reply_markup: TR_BUTTON })
+        await sendMessage(cbToken, POULAILLER_FR, frMsg, { message_thread_id: m.fr, reply_markup: TR_BUTTON })
+        await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id)
+        await sendMessage(cbToken, cbUser.id, '✅ Breaking news publiée dans les deux groupes.')
+        return new Response('ok')
+      }
+
       // ── Bouton "🔞 Spicy" (menu /start) → ouvre le parcours Spicy gratuit ──
       if (cb.data === 'holders' || cb.data === 'spicy_open') {
         const isFR = await getLang(cbSupa, cbUser.id.toString()) === 'fr'
@@ -679,6 +707,43 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
+    //  BREAKING NEWS perso (OWNER) — /f1 /motogp /worldroost /crypto
+    //  Le bot demande un SUJET, l'IA rédige (grounded, EN+FR) et envoie un
+    //  APERÇU au owner avec ✅ Publier / ❌ Annuler → délègue à « breaking-news ».
+    //  On peut aussi coller le sujet directement : « /f1 Toto Wolff en vacances… ».
+    // ══════════════════════════════════════════════════════════
+    {
+      const BN_META: Record<string, { cat: string; emoji: string; label: string }> = {
+        '/f1':         { cat: 'f1',         emoji: '🏎️', label: 'F1' },
+        '/motogp':     { cat: 'motogp',     emoji: '🏍️', label: 'MotoGP' },
+        '/worldroost': { cat: 'worldroost', emoji: '🌍', label: 'World Roost' },
+        '/crypto':     { cat: 'crypto',     emoji: '⚡', label: 'Crypto' },
+      }
+      const firstTok = text.split(/\s+/)[0]
+      const meta = BN_META[firstTok]
+      if (meta) {
+        if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement
+        const inline = rawText.slice(firstTok.length).trim()   // sujet éventuel collé après la commande
+        if (inline) {
+          try { await supabase.from('admin_pending').delete().eq('owner_id', userId) } catch (_) { /* ok */ }
+          const cronSecret = Deno.env.get('CRON_SECRET') || ''
+          const trigger = fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/breaking-news', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+            body: JSON.stringify({ category: meta.cat, subject: inline, owner: Number(userId) }),
+          }).catch((e) => console.error('breaking trigger:', String(e)))
+          ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
+          await sendMessage(token, chatId, `${meta.emoji} <b>Breaking news ${meta.label}</b> — ⏳ je rédige et je te montre l'aperçu EN+FR…`)
+        } else {
+          await supabase.from('admin_pending')
+            .upsert({ owner_id: userId, action: 'breaking:' + meta.cat, created_at: new Date().toISOString() }, { onConflict: 'owner_id' })
+          await sendMessage(token, chatId,
+            `${meta.emoji} <b>Breaking news ${meta.label}</b> — quel sujet ?\nRéponds avec le sujet. Si c'est un potin (X/Twitter…), ajoute la source, je le mettrai en forme comme rumeur.`)
+        }
+        return new Response('ok')
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  /enablesecretary (OWNER) — active le mode secrétaire Business :
     //  déclare les updates business au webhook. À lancer UNE fois, puis
     //  reconnecter le bot dans Réglages → Business → Chatbots.
@@ -776,9 +841,22 @@ Deno.serve(async (req) => {
       return new Response('ok')
     }
 
-    // Owner répond au "quel utilisateur ?" (un pseudo attendu, en privé).
+    // Owner répond au "quel utilisateur ?" ou "quel sujet ?" (en privé).
     if (msg.chat?.type === 'private' && userId === OWNER_ID && rawText.length > 0 && !rawText.startsWith('/')) {
       const { data: pend } = await supabase.from('admin_pending').select('action').eq('owner_id', userId).maybeSingle()
+      // Sujet d'une breaking news perso (/f1 /motogp /worldroost /crypto).
+      if (pend?.action && String(pend.action).startsWith('breaking:')) {
+        const category = String(pend.action).split(':')[1]
+        try { await supabase.from('admin_pending').delete().eq('owner_id', userId) } catch (_) { /* ok */ }
+        const cronSecret = Deno.env.get('CRON_SECRET') || ''
+        const trigger = fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/breaking-news', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+          body: JSON.stringify({ category, subject: rawText.trim(), owner: Number(userId) }),
+        }).catch((e) => console.error('breaking trigger:', String(e)))
+        ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
+        await sendMessage(token, chatId, `⏳ Je rédige la breaking news et je te montre l'aperçu EN+FR…`)
+        return new Response('ok')
+      }
       if (pend?.action && String(pend.action).startsWith('stopuser:')) {
         const scope = String(pend.action).split(':')[1]
         try { await supabase.from('admin_pending').delete().eq('owner_id', userId) } catch (_) { /* ok */ }
