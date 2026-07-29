@@ -707,9 +707,12 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    //  BREAKING NEWS perso (OWNER) — /f1 /motogp /worldroost /crypto
-    //  Le bot demande un SUJET, l'IA rédige (grounded, EN+FR) et envoie un
-    //  APERÇU au owner avec ✅ Publier / ❌ Annuler → délègue à « breaking-news ».
+    //  BREAKING NEWS perso (OWNER) — /f1 /motogp /worldroost /crypto + /x
+    //  Le bot demande un SUJET, l'IA rédige (grounded) et envoie un APERÇU au
+    //  owner → délègue à « breaking-news ».
+    //   • /f1 /motogp /worldroost /crypto : aperçu EN+FR + ✅ Publier / ❌ Annuler
+    //     (publie dans les 2 groupes au clic).
+    //   • /x : un post prêt pour X + bouton « 📤 Publier sur X » (pas de post groupe).
     //  On peut aussi coller le sujet directement : « /f1 Toto Wolff en vacances… ».
     // ══════════════════════════════════════════════════════════
     {
@@ -718,6 +721,7 @@ Deno.serve(async (req) => {
         '/motogp':     { cat: 'motogp',     emoji: '🏍️', label: 'MotoGP' },
         '/worldroost': { cat: 'worldroost', emoji: '🌍', label: 'World Roost' },
         '/crypto':     { cat: 'crypto',     emoji: '⚡', label: 'Crypto' },
+        '/x':          { cat: 'x',          emoji: '📤', label: 'X (annonce à publier)' },
       }
       const firstTok = text.split(/\s+/)[0]
       const meta = BN_META[firstTok]
@@ -732,12 +736,15 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ category: meta.cat, subject: inline, owner: Number(userId) }),
           }).catch((e) => console.error('breaking trigger:', String(e)))
           ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
-          await sendMessage(token, chatId, `${meta.emoji} <b>Breaking news ${meta.label}</b> — ⏳ je rédige et je te montre l'aperçu EN+FR…`)
+          await sendMessage(token, chatId, meta.cat === 'x'
+            ? `📤 <b>Annonce X</b> — ⏳ je rédige ton post prêt à publier…`
+            : `${meta.emoji} <b>Breaking news ${meta.label}</b> — ⏳ je rédige et je te montre l'aperçu EN+FR…`)
         } else {
           await supabase.from('admin_pending')
             .upsert({ owner_id: userId, action: 'breaking:' + meta.cat, created_at: new Date().toISOString() }, { onConflict: 'owner_id' })
-          await sendMessage(token, chatId,
-            `${meta.emoji} <b>Breaking news ${meta.label}</b> — quel sujet ?\nRéponds avec le sujet. Si c'est un potin (X/Twitter…), ajoute la source, je le mettrai en forme comme rumeur.`)
+          await sendMessage(token, chatId, meta.cat === 'x'
+            ? `📤 <b>Annonce X</b> — quelle nouveauté veux-tu annoncer ?\nRéponds avec le sujet, je te rédige un post prêt à publier sur X (avec le bouton « Publier sur X »).`
+            : `${meta.emoji} <b>Breaking news ${meta.label}</b> — quel sujet ?\nRéponds avec le sujet. Si c'est un potin (X/Twitter…), ajoute la source, je le mettrai en forme comme rumeur.`)
         }
         return new Response('ok')
       }

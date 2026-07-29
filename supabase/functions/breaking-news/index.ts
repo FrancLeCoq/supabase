@@ -31,6 +31,7 @@ const CAT: Record<string, { emoji: string; label: string }> = {
   motogp: { emoji: '🏍️', label: 'MotoGP' },
   worldroost: { emoji: '🌍', label: 'World Roost' },
   crypto: { emoji: '⚡', label: 'Crypto' },
+  x: { emoji: '📤', label: 'X' },   // annonce prête à publier sur X (Twitter)
 }
 
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -108,6 +109,37 @@ function formatPrompt(label: string, subject: string, facts: string): string {
   ].join(NL)
 }
 
+// Annonce prête pour X (Twitter) : format court, percutant, sans lien t.me
+// (un lien t.me dans le post provoque un shadowban → le CTA se met en commentaire).
+function xPrompt(subject: string, facts: string): string {
+  const hasFacts = facts && facts.toUpperCase().indexOf('NONE') !== 0
+  return [
+    'You are Francis the rooster, voice of the $FRANC community memecoin on X (Twitter). Write ONE ready-to-post X announcement about this news from our universe.',
+    '',
+    'ANNOUNCEMENT TOPIC (from the owner):',
+    subject,
+    '',
+    'CONTEXT FOUND ONLINE:',
+    '---', hasFacts ? facts : '(nothing extra found — rely on the topic above)', '---',
+    '',
+    'RULES:',
+    '- ONE single post, 280 CHARACTERS MAXIMUM (hard limit).',
+    '- Punchy, exciting, on-brand for a fun rooster memecoin community. English.',
+    '- 1 to 3 relevant hashtags at the end (e.g. #FRANC #Solana #crypto). Keep $FRANC if relevant.',
+    '- A couple of emojis max. NO markdown.',
+    '- NEVER include a t.me link or any URL (the link goes in a separate comment).',
+    '- Base it on the topic; do not invent hard facts (numbers, dates) that are not given.',
+    '',
+    'Output ONLY the X post text, nothing else.',
+  ].join(NL)
+}
+// Clavier « Publier sur X » (+ Copier si assez court) sous l'aperçu owner.
+function xShareKeyboard(text: string) {
+  const xBtn = { text: '📤 Publier sur X', url: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) }
+  const row = (text.length <= 256) ? [{ text: '📋 Copier', copy_text: { text } }, xBtn] : [xBtn]
+  return { inline_keyboard: [row] }
+}
+
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram breaking-news message into natural, fluent FRENCH.',
@@ -147,6 +179,23 @@ Deno.serve(async (req: Request) => {
 
   const bg = (async () => {
     try {
+      // Cas spécial « X » : une annonce prête à publier sur X, envoyée au owner
+      // avec un bouton « Publier sur X ». Pas de traduction, pas de post groupe.
+      if (category === 'x') {
+        const facts = await groundedSearch(searchPrompt('news', subject))
+        const post = await formatCall(xPrompt(subject, facts))
+        if (!post || post.toUpperCase().indexOf('NONE') === 0) {
+          await tg(token, 'sendMessage', { chat_id: owner, text: '📤 X — impossible de rédiger. Réessaie avec un sujet plus précis.' })
+          return
+        }
+        await tg(token, 'sendMessage', {
+          chat_id: owner,
+          text: '📤 <b>Annonce prête pour X</b>\n\n' + post + '\n\n<i>Touche « Publier sur X » pour ouvrir X avec le texte pré-rempli.</i>',
+          parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: xShareKeyboard(post),
+        })
+        return
+      }
+
       const facts = await groundedSearch(searchPrompt(cat.label, subject))
       const en = await formatCall(formatPrompt(cat.label, subject, facts))
       if (!en || en.toUpperCase().indexOf('NONE') === 0) {

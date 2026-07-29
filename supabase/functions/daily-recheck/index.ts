@@ -124,8 +124,35 @@ async function compliance(token: string, uid: number): Promise<'in' | 'out' | 'u
   return 'out'
 }
 
+// Construit le corps du rappel public à partir des deux cohortes.
+function buildReminderText(todayCohort: any[], tomorrowCohort: any[]): string {
+  let text =
+    `🐓 <b>Golden Rooster — membership check</b>\n\n` +
+    `Before entering "Golden Rooster", make sure you're already part of "The Chicken Coop" 🐓\n` +
+    `🇺🇸 ${COOP_URL}\n` +
+    `Or\n` +
+    `🇫🇷 ${POUL_URL}\n\n` +
+    `The two groups work together: our bot checks your membership in "The Chicken Coop" (or Le Poulailler) and keeps your access to "Golden Rooster" unlocked.`
+  if (todayCohort.length) text += `\n\n⏰ <b>Last check today at 14h UTC for:</b>\n` + todayCohort.map(mention).join('\n')
+  if (tomorrowCohort.length) text += `\n\n📅 <b>Last check tomorrow at 14h UTC for:</b>\n` + tomorrowCohort.map(mention).join('\n')
+  return text
+}
+
 // ── Mode "remind" (12:00 UTC) : marque + rappel public, sans expulser ──
-async function runRemind(token: string, supabase: any): Promise<Response> {
+// test=true : envoie un APERÇU (données fictives) au OWNER en DM, sans toucher
+// au groupe ni à la base — juste pour visualiser le rendu.
+async function runRemind(token: string, supabase: any, test = false): Promise<Response> {
+  if (test) {
+    const s = (u: string | null, n: string, id: number) => ({ username: u, name: n, telegram_id: id })
+    const today = [s('john_doe', 'John', 111), s(null, 'Marie', 222)]
+    const tomorrow = [s('paul_x', 'Paul', 333)]
+    await tg(token, 'sendMessage', {
+      chat_id: Number(OWNER_ID),
+      text: '🧪 <i>Aperçu du rappel Golden Rooster (données fictives, non posté dans le groupe) :</i>\n\n' + buildReminderText(today, tomorrow),
+      parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: TR_BUTTON,
+    })
+    return new Response(JSON.stringify({ ok: true, mode: 'remind', test: true }), { headers: { 'Content-Type': 'application/json' } })
+  }
   const { data: members, error } = await supabase
     .from('group_members')
     .select('telegram_id, username, name, grace_until')
@@ -166,21 +193,8 @@ async function runRemind(token: string, supabase: any): Promise<Response> {
   // On ne poste le rappel QUE s'il y a au moins un membre à prévenir.
   let posted = false
   if (todayCohort.length || tomorrowCohort.length) {
-    let text =
-      `🐓 <b>Golden Rooster — membership check</b>\n\n` +
-      `Before entering "Golden Rooster", make sure you're already part of "The Chicken Coop" 🐓\n` +
-      `🇺🇸 ${COOP_URL}\n` +
-      `Or\n` +
-      `🇫🇷 ${POUL_URL}\n\n` +
-      `The two groups work together: our bot checks your membership in "The Chicken Coop" (or Le Poulailler) and keeps your access to "Golden Rooster" unlocked.`
-    if (todayCohort.length) {
-      text += `\n\n⏰ <b>Last check today at 14h UTC for:</b>\n` + todayCohort.map(mention).join('\n')
-    }
-    if (tomorrowCohort.length) {
-      text += `\n\n📅 <b>Last check tomorrow at 14h UTC for:</b>\n` + tomorrowCohort.map(mention).join('\n')
-    }
     const sent = await tg(token, 'sendMessage', {
-      chat_id: SPICY_GROUP_ID, text, parse_mode: 'HTML',
+      chat_id: SPICY_GROUP_ID, text: buildReminderText(todayCohort, tomorrowCohort), parse_mode: 'HTML',
       disable_web_page_preview: true, reply_markup: TR_BUTTON,
     })
     posted = !!(sent && sent.ok)
@@ -279,10 +293,12 @@ Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   let mode = 'enforce'
+  let test = false
   try {
     const body = await req.json()
     if (body && body.mode === 'remind') mode = 'remind'
+    if (body && body.test === true) test = true
   } catch { /* corps vide → enforce (rétro-compatible) */ }
 
-  return mode === 'remind' ? await runRemind(token, supabase) : await runEnforce(token, supabase)
+  return mode === 'remind' ? await runRemind(token, supabase, test) : await runEnforce(token, supabase)
 })
