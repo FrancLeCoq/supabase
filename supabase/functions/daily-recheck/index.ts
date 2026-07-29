@@ -2,7 +2,7 @@
 //  daily-recheck — Edge Function Supabase (accès Golden Rooster).
 //
 //  RÈGLE : l'accès au groupe privé Spicy (« Golden Rooster ») est GRATUIT
-//  mais réservé aux MEMBRES de « The Chicken Coop » 🇬🇧 OU du
+//  mais réservé aux MEMBRES de « The Chicken Coop » 🇺🇸 OU du
 //  « Poulailler » 🇫🇷. Depuis que le groupe est référencé publiquement, on
 //  laisse un SURSIS aux nouveaux arrivants au lieu d'expulser sèchement
 //  (Telegram interdit au bot d'écrire en 1er à qui n'a pas lancé le bot, donc
@@ -34,7 +34,7 @@ const SPICY_DEEPLINK = 'https://t.me/FrancisLeCoqBot?start=spicy'
 const OWNER_ID = '6593812300'
 
 // Liens publics des deux groupes « passerelle ».
-const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇬🇧
+const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇺🇸
 const POUL_URL = 't.me/FrancisLeCoq'         // Le Poulailler 🇫🇷
 
 // Sursis (jours) avant expulsion. L'échéance tombe à 14h UTC (= 2:00 PM UTC).
@@ -86,10 +86,10 @@ async function dmKicked(token: string, userId: number) {
     disable_web_page_preview: true,
     text:
       `🔞 <b>Accès Spicy suspendu</b>\n` +
-      `Tu as été retiré de « Golden Rooster » car tu n'es plus membre de <b>The Chicken Coop</b> 🇬🇧 ni du <b>Poulailler</b> 🇫🇷.\n` +
+      `Tu as été retiré de « Golden Rooster » car tu n'es plus membre de <b>The Chicken Coop</b> 🇺🇸 ni du <b>Poulailler</b> 🇫🇷.\n` +
       `C'est <b>gratuit</b> : rejoins l'un des deux groupes puis reclique ci-dessous pour revenir. 🐓\n\n` +
       `🔞 <b>Spicy access paused</b>\n` +
-      `You were removed from "Golden Rooster" because you're no longer a member of <b>The Chicken Coop</b> 🇬🇧 or <b>Le Poulailler</b> 🇫🇷.\n` +
+      `You were removed from "Golden Rooster" because you're no longer a member of <b>The Chicken Coop</b> 🇺🇸 or <b>Le Poulailler</b> 🇫🇷.\n` +
       `It's <b>free</b>: join one of the two groups, then tap below to come back.`,
     reply_markup: { inline_keyboard: [[{ text: '🔞 Revenir dans Spicy / Come back', url: SPICY_DEEPLINK }]] },
   })
