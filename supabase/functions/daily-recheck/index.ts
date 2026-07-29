@@ -43,12 +43,13 @@ const GRACE_DAYS = 2
 // Heure d'expulsion, écrite selon la langue (14h UTC en FR, 2:00 PM en EN).
 const TIME_STR = { en: '2:00 PM UTC', fr: '14:00 UTC' }
 
-// Bouton 🇬🇧/🇫🇷 : rend la version native de l'autre langue (géré par bot-handler,
-// callback grtr:en / grtr:fr → réédite le message via le mode "render").
-const GR_TR_BUTTON = { inline_keyboard: [[
-  { text: '🇬🇧 EN', callback_data: 'grtr:en' },
-  { text: '🇫🇷 FR', callback_data: 'grtr:fr' },
-]] }
+// Clavier sous le rappel : ligne 1 = bascule langue 🇬🇧/🇫🇷 (rendu natif, géré
+// par bot-handler via grtr:en / grtr:fr) ; ligne 2 = accès direct aux deux
+// groupes « passerelle » (Coop sous EN, Poulailler sous FR) → la boucle est bouclée.
+const GR_TR_BUTTON = { inline_keyboard: [
+  [ { text: '🇬🇧 EN', callback_data: 'grtr:en' }, { text: '🇫🇷 FR', callback_data: 'grtr:fr' } ],
+  [ { text: 'The Chicken Coop 🇺🇸', url: 'https://t.me/LeCoqFrancis' }, { text: 'Le Poulailler 🇫🇷', url: 'https://t.me/FrancisLeCoq' } ],
+] }
 
 // ── Telegram helpers ────────────────────────────────────────────
 async function tg(token: string, method: string, body: Record<string, any>) {

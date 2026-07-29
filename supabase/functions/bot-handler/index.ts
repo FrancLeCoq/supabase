@@ -387,10 +387,10 @@ Deno.serve(async (req) => {
                 body: JSON.stringify({
                   chat_id: m.chat.id, message_id: m.message_id, text: j.text,
                   parse_mode: 'HTML', disable_web_page_preview: true,
-                  reply_markup: { inline_keyboard: [[
-                    { text: '🇬🇧 EN', callback_data: 'grtr:en' },
-                    { text: '🇫🇷 FR', callback_data: 'grtr:fr' },
-                  ]] },
+                  reply_markup: { inline_keyboard: [
+                    [ { text: '🇬🇧 EN', callback_data: 'grtr:en' }, { text: '🇫🇷 FR', callback_data: 'grtr:fr' } ],
+                    [ { text: 'The Chicken Coop 🇺🇸', url: 'https://t.me/LeCoqFrancis' }, { text: 'Le Poulailler 🇫🇷', url: 'https://t.me/FrancisLeCoq' } ],
+                  ] },
                 }),
               })
             }
