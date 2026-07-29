@@ -31,8 +31,8 @@ import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang
 // ══════════════════════════════════════════════════════════════
 function spicyWelcomeText(isFR: boolean): string {
   return isFR
-    ? `🔞 <b>Bienvenue dans l'espace Spicy du Poulailler.</b>\n\nL'accès est <b>gratuit</b>, mais réservé aux <b>membres de The Chicken Coop 🇬🇧 (ou du Poulailler 🇫🇷)</b> et aux personnes <b>majeures (18+)</b>.\n\n1️⃣ Rejoins un des deux groupes\n2️⃣ Certifie tes 18 ans → tu reçois ton lien 🔥`
-    : `🔞 <b>Welcome to the Poulailler's Spicy space.</b>\n\nAccess is <b>free</b>, but reserved for <b>members of The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷)</b> and <b>adults (18+)</b> only.\n\n1️⃣ Join one of the two groups\n2️⃣ Certify you're 18+ → you get your link 🔥`
+    ? `🔞 <b>Bienvenue dans l'espace Spicy du Poulailler (« Golden Rooster »).</b>\n\nL'accès est <b>gratuit</b>, mais réservé aux <b>membres de The Chicken Coop 🇬🇧 (ou du Poulailler 🇫🇷)</b> et aux personnes <b>majeures (18+)</b>.\n\n1️⃣ Rejoins un des deux groupes\n2️⃣ Certifie tes 18 ans → tu reçois ton lien 🔥\n\n⚠️ <b>Reste membre</b> de l'un des deux groupes : le bot vérifie chaque jour et retire l'accès à ceux qui les ont quittés.`
+    : `🔞 <b>Welcome to the Poulailler's Spicy space ("Golden Rooster").</b>\n\nAccess is <b>free</b>, but reserved for <b>members of The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷)</b> and <b>adults (18+)</b> only.\n\n1️⃣ Join one of the two groups\n2️⃣ Certify you're 18+ → you get your link 🔥\n\n⚠️ <b>Stay a member</b> of one of the two groups: the bot checks daily and removes access from anyone who leaves them.`
 }
 function spicyWelcomeKeyboard(isFR: boolean) {
   return { inline_keyboard: [
@@ -78,7 +78,7 @@ const X_CTA: Record<string, string> = {
 }
 
 // Bouton "🌐 FR / EN" placé sous les news automatiques (traduction bascule).
-const TR_BUTTON = { inline_keyboard: [[{ text: '🌐 FR / EN', callback_data: 'trhot' }]] }
+const TR_BUTTON = { inline_keyboard: [[{ text: '🇬🇧 EN', callback_data: 'trhot' }, { text: '🇫🇷 FR', callback_data: 'trhot' }]] }
 
 // Traduit un message vers l'AUTRE langue (FR↔EN) en conservant emojis/mise en
 // page. Utilisé par le bouton de traduction sous les news auto.

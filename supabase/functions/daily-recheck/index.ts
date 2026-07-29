@@ -1,31 +1,52 @@
 // ══════════════════════════════════════════════════════════════
-//  daily-recheck — Edge Function Supabase
-//  Declenchee par pg_cron une fois par jour (secret x-recheck-secret).
+//  daily-recheck — Edge Function Supabase (accès Golden Rooster).
 //
-//  NOUVELLE REGLE (acces Spicy GRATUIT) : l'acces au groupe prive Spicy
-//  n'est PLUS lie a la detention de $FRANC. Il est reserve aux MEMBRES de
-//  "The Chicken Coop" 🇬🇧 OU du "Poulailler" 🇫🇷.
+//  RÈGLE : l'accès au groupe privé Spicy (« Golden Rooster ») est GRATUIT
+//  mais réservé aux MEMBRES de « The Chicken Coop » 🇬🇧 OU du
+//  « Poulailler » 🇫🇷. Depuis que le groupe est référencé publiquement, on
+//  laisse un SURSIS aux nouveaux arrivants au lieu d'expulser sèchement
+//  (Telegram interdit au bot d'écrire en 1er à qui n'a pas lancé le bot, donc
+//   on ne peut pas prévenir chacun en DM → on prévient dans le groupe).
 //
-//  Pour chaque membre suivi du groupe Spicy :
-//    * s'il est TOUJOURS membre de Coop OU Poulailler -> on garde
-//    * sinon -> kick (ban+unban) + DM expliquant la raison + bouton pour
-//      revenir gratuitement (relance ?start=spicy). Admins ignores.
+//  DEUX PASSAGES (pg_cron, corps {"mode":"..."}) :
+//    • mode "remind"  — 12:00 UTC : marque les non-conformes (échéance =
+//        aujourd'hui + GRACE_DAYS à 14h UTC) et poste UN rappel public dans
+//        « Golden Rooster » listant qui sera contrôlé aujourd'hui / demain.
+//        N'EXPULSE PERSONNE.
+//    • mode "enforce" — 14:00 UTC : expulse ceux dont l'échéance est passée
+//        et toujours non-membres, puis envoie le rapport au owner (avec la
+//        « prévision d'expulsion demain »). C'est le mode par défaut.
 //
-//  On ne kicke JAMAIS si on ne peut pas confirmer (echec API) : par securite
-//  on garde le membre.
+//  On ne kicke JAMAIS si on ne peut pas confirmer (échec API) : par sécurité
+//  on garde le membre (statut « indéterminé »).
 //
-//  Securite : header x-recheck-secret == RECHECK_SECRET.
+//  Sécurité : header x-recheck-secret == RECHECK_SECRET
+//             OU x-cron-secret == CRON_SECRET (pour les crons vault).
 // ══════════════════════════════════════════════════════════════
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // ⚠️ Doit correspondre EXACTEMENT au HOLDERS_GROUP_ID du bot-handler
-// (le vrai groupe prive Spicy ou le bot cree les invitations et suit les
-//  arrivees). Un mauvais ID = le bot bannit dans le vide.
-const SPICY_GROUP_ID = -1003962771717        // groupe prive Spicy (t.me/+H-Yq…)
+// (le vrai groupe privé Spicy / « Golden Rooster »).
+const SPICY_GROUP_ID = -1003962771717        // groupe privé Spicy = Golden Rooster
 const CHICKEN_COOP = -1003842240104          // The Chicken Coop (EN)
 const POULAILLER_FR = -1004352289820         // Le Poulailler (FR)
 const SPICY_DEEPLINK = 'https://t.me/FrancisLeCoqBot?start=spicy'
 const OWNER_ID = '6593812300'
+
+// Liens publics des deux groupes « passerelle ».
+const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇺🇸
+const POUL_URL = 't.me/FrancisLeCoq'         // Le Poulailler 🇫🇷
+
+// Sursis (en jours) laissé à un membre non conforme avant expulsion.
+// L'échéance tombe toujours à 14h UTC (jour du repérage + GRACE_DAYS).
+const GRACE_DAYS = 2
+
+// Bouton de traduction EN/FR (drapeaux) — géré par le callback 'trhot' du
+// bot-handler, qui bascule la langue du message en place.
+const TR_BUTTON = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'trhot' },
+  { text: '🇫🇷 FR', callback_data: 'trhot' },
+]] }
 
 // ── Telegram helpers ────────────────────────────────────────────
 async function tg(token: string, method: string, body: Record<string, any>) {
@@ -39,7 +60,7 @@ async function tg(token: string, method: string, body: Record<string, any>) {
   } catch (e) { console.error('tg error', method, e); return null }
 }
 
-// Statut d'un membre dans un chat, ou null si l'appel echoue (indetermine).
+// Statut d'un membre dans un chat, ou null si l'appel échoue (indéterminé).
 async function memberStatus(token: string, chatId: number, userId: number): Promise<string | null> {
   const r = await tg(token, 'getChatMember', { chat_id: chatId, user_id: userId })
   if (!r || r.ok !== true || !r.result) return null
@@ -49,7 +70,7 @@ function isIn(status: string | null): boolean {
   return status === 'member' || status === 'administrator' || status === 'creator' || status === 'restricted'
 }
 
-// Kick "soft" : ban puis unban -> le membre sort mais peut re-rejoindre
+// Kick « soft » : ban puis unban → le membre sort mais peut re-rejoindre
 // (gratuitement) s'il redevient membre de Coop/Poulailler.
 async function kickMember(token: string, userId: number): Promise<{ ok: boolean; error?: string }> {
   const ban = await tg(token, 'banChatMember', { chat_id: SPICY_GROUP_ID, user_id: userId })
@@ -65,84 +86,203 @@ async function dmKicked(token: string, userId: number) {
     disable_web_page_preview: true,
     text:
       `🔞 <b>Accès Spicy suspendu</b>\n` +
-      `Tu as été retiré de l'espace Spicy car tu n'es plus membre de <b>The Chicken Coop</b> 🇬🇧 ni du <b>Poulailler</b> 🇫🇷.\n` +
+      `Tu as été retiré de « Golden Rooster » car tu n'es plus membre de <b>The Chicken Coop</b> 🇬🇧 ni du <b>Poulailler</b> 🇫🇷.\n` +
       `C'est <b>gratuit</b> : rejoins l'un des deux groupes puis reclique ci-dessous pour revenir. 🐓\n\n` +
       `🔞 <b>Spicy access paused</b>\n` +
-      `You were removed from the Spicy space because you're no longer a member of <b>The Chicken Coop</b> 🇬🇧 or <b>Le Poulailler</b> 🇫🇷.\n` +
+      `You were removed from "Golden Rooster" because you're no longer a member of <b>The Chicken Coop</b> 🇬🇧 or <b>Le Poulailler</b> 🇫🇷.\n` +
       `It's <b>free</b>: join one of the two groups, then tap below to come back.`,
     reply_markup: { inline_keyboard: [[{ text: '🔞 Revenir dans Spicy / Come back', url: SPICY_DEEPLINK }]] },
   })
 }
 
-// ── Handler ─────────────────────────────────────────────────────
-Deno.serve(async (req) => {
-  const secret = req.headers.get('x-recheck-secret')
-  if (secret !== Deno.env.get('RECHECK_SECRET')) return new Response('forbidden', { status: 403 })
+// ── Utilitaires dates / mentions ───────────────────────────────
+// Échéance d'expulsion à partir de maintenant : jour + GRACE_DAYS, à 14h UTC.
+function deadlineFromNow(): string {
+  const d = new Date()
+  d.setUTCDate(d.getUTCDate() + GRACE_DAYS)
+  d.setUTCHours(14, 0, 0, 0)
+  return d.toISOString()
+}
+function ymd(d: Date): string { return d.toISOString().slice(0, 10) }
+function escapeHtml(s: string): string {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+// Mention cliquable : @username si dispo, sinon lien tg://user (ping l'ID).
+function mention(m: any): string {
+  if (m && m.username) return '@' + m.username
+  const nm = escapeHtml((m && m.name) || 'member')
+  return `<a href="tg://user?id=${m.telegram_id}">${nm}</a>`
+}
 
-  const token = Deno.env.get('BOT_TOKEN')!
-  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+// Membre encore présent (member/admin/restricted) dans Coop OU Poulailler ?
+// Renvoie 'in' | 'out' | 'unknown' (unknown = un appel API a échoué).
+async function compliance(token: string, uid: number): Promise<'in' | 'out' | 'unknown'> {
+  const coop = await memberStatus(token, CHICKEN_COOP, uid)
+  const poul = await memberStatus(token, POULAILLER_FR, uid)
+  if (isIn(coop) || isIn(poul)) return 'in'
+  if (coop === null || poul === null) return 'unknown'
+  return 'out'
+}
 
+// ── Mode "remind" (12:00 UTC) : marque + rappel public, sans expulser ──
+async function runRemind(token: string, supabase: any): Promise<Response> {
   const { data: members, error } = await supabase
     .from('group_members')
-    .select('telegram_id, username, name')
+    .select('telegram_id, username, name, grace_until')
     .eq('status', 'member')
   if (error) return new Response(JSON.stringify({ ok: false, error: error.message }), { status: 500 })
 
-  let checked = 0, kept = 0, kicked = 0, skippedAdmin = 0, unknown = 0, failed = 0
+  const now = new Date()
+  const todayYmd = ymd(now)
+  const tomorrowYmd = ymd(new Date(now.getTime() + 86400000))
+  const nowIso = now.toISOString()
+  const todayCohort: any[] = []      // échéance == aujourd'hui → contrôle à 14h aujourd'hui
+  const tomorrowCohort: any[] = []   // échéance == demain
+
+  for (const m of members ?? []) {
+    const uid = m.telegram_id as number
+    const c = await compliance(token, uid)
+    if (c === 'in') {
+      // Redevenu conforme → on efface l'échéance.
+      if (m.grace_until) await supabase.from('group_members').update({ grace_until: null, last_checked: nowIso }).eq('telegram_id', uid)
+      else await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid)
+      continue
+    }
+    if (c === 'unknown') { await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid); continue }
+    // Non conforme : on pose une échéance si absente (repérage initial).
+    let g = m.grace_until as string | null
+    if (!g) {
+      g = deadlineFromNow()
+      await supabase.from('group_members').update({ grace_until: g, last_checked: nowIso }).eq('telegram_id', uid)
+    } else {
+      await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid)
+    }
+    const gYmd = g.slice(0, 10)
+    if (gYmd === todayYmd) todayCohort.push(m)
+    else if (gYmd === tomorrowYmd) tomorrowCohort.push(m)
+    // échéance plus lointaine (repéré aujourd'hui) → pas encore listé publiquement
+  }
+
+  // On ne poste le rappel QUE s'il y a au moins un membre à prévenir.
+  let posted = false
+  if (todayCohort.length || tomorrowCohort.length) {
+    let text =
+      `🐓 <b>Golden Rooster — membership check</b>\n\n` +
+      `Before entering "Golden Rooster", make sure you're already part of "The Chicken Coop" 🐓\n` +
+      `🇺🇸 ${COOP_URL}\n` +
+      `Or\n` +
+      `🇫🇷 ${POUL_URL}\n\n` +
+      `The two groups work together: our bot checks your membership in "The Chicken Coop" (or Le Poulailler) and keeps your access to "Golden Rooster" unlocked.`
+    if (todayCohort.length) {
+      text += `\n\n⏰ <b>Last check today at 14h UTC for:</b>\n` + todayCohort.map(mention).join('\n')
+    }
+    if (tomorrowCohort.length) {
+      text += `\n\n📅 <b>Last check tomorrow at 14h UTC for:</b>\n` + tomorrowCohort.map(mention).join('\n')
+    }
+    const sent = await tg(token, 'sendMessage', {
+      chat_id: SPICY_GROUP_ID, text, parse_mode: 'HTML',
+      disable_web_page_preview: true, reply_markup: TR_BUTTON,
+    })
+    posted = !!(sent && sent.ok)
+  }
+
+  return new Response(JSON.stringify({ ok: true, mode: 'remind', today: todayCohort.length, tomorrow: tomorrowCohort.length, posted }), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+// ── Mode "enforce" (14:00 UTC) : expulse les échéances passées + rapport ──
+async function runEnforce(token: string, supabase: any): Promise<Response> {
+  const { data: members, error } = await supabase
+    .from('group_members')
+    .select('telegram_id, username, name, grace_until')
+    .eq('status', 'member')
+  if (error) return new Response(JSON.stringify({ ok: false, error: error.message }), { status: 500 })
+
+  let checked = 0, kept = 0, kicked = 0, skippedAdmin = 0, unknown = 0, failed = 0, pending = 0
   const failures: string[] = []
-  const now = new Date().toISOString()
+  const forecast: any[] = []   // « prévision d'expulsion demain »
+  const now = new Date()
+  const nowIso = now.toISOString()
+  const tomorrowYmd = ymd(new Date(now.getTime() + 86400000))
 
   for (const m of members ?? []) {
     checked++
     const uid = m.telegram_id as number
+    const c = await compliance(token, uid)
 
-    // Toujours membre de Coop OU Poulailler ?
-    const coop = await memberStatus(token, CHICKEN_COOP, uid)
-    const poul = await memberStatus(token, POULAILLER_FR, uid)
-
-    if (isIn(coop) || isIn(poul)) {
+    if (c === 'in') {
       kept++
-      await supabase.from('group_members').update({ last_checked: now }).eq('telegram_id', uid)
+      await supabase.from('group_members').update({ grace_until: null, last_checked: nowIso }).eq('telegram_id', uid)
       continue
     }
-    // Indetermine (un appel a echoue) -> on NE kicke PAS, on garde par securite.
-    if (coop === null || poul === null) {
-      unknown++
-      await supabase.from('group_members').update({ last_checked: now }).eq('telegram_id', uid)
-      continue
-    }
+    if (c === 'unknown') { unknown++; await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid); continue }
 
-    // Confirme non-membre des deux. On ne kicke pas un admin/createur du Spicy.
+    // Non conforme confirmé. On n'expulse pas un admin/créateur du Spicy.
     const spicy = await memberStatus(token, SPICY_GROUP_ID, uid)
-    if (spicy === 'administrator' || spicy === 'creator') {
-      skippedAdmin++
-      await supabase.from('group_members').update({ last_checked: now }).eq('telegram_id', uid)
+    if (spicy === 'administrator' || spicy === 'creator') { skippedAdmin++; await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid); continue }
+    if (spicy === 'left' || spicy === 'kicked') { await supabase.from('group_members').update({ status: 'kicked', grace_until: null, last_checked: nowIso }).eq('telegram_id', uid); continue }
+
+    // Échéance : posée si absente (sécurité si le "remind" n'a pas tourné).
+    let g = m.grace_until as string | null
+    if (!g) {
+      g = deadlineFromNow()
+      await supabase.from('group_members').update({ grace_until: g, last_checked: nowIso }).eq('telegram_id', uid)
+      pending++
+      if (g.slice(0, 10) === tomorrowYmd) forecast.push(m)
       continue
     }
-    if (spicy === 'left' || spicy === 'kicked') {
-      await supabase.from('group_members').update({ status: 'kicked', last_checked: now }).eq('telegram_id', uid)
+    // Encore dans le sursis → on ne touche pas, on prévoit.
+    if (new Date(g).getTime() > now.getTime()) {
+      pending++
+      if (g.slice(0, 10) === tomorrowYmd) forecast.push(m)
+      await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid)
       continue
     }
 
+    // Échéance dépassée → expulsion.
     const res = await kickMember(token, uid)
     if (res.ok) {
       await dmKicked(token, uid)
-      await supabase.from('group_members').update({ status: 'kicked', last_checked: now }).eq('telegram_id', uid)
+      await supabase.from('group_members').update({ status: 'kicked', grace_until: null, last_checked: nowIso }).eq('telegram_id', uid)
       kicked++
     } else {
       failed++
       failures.push(`${m.username || uid}: ${res.error}`)
-      await supabase.from('group_members').update({ last_checked: now }).eq('telegram_id', uid)
+      await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid)
     }
   }
 
+  const forecastLine = forecast.length
+    ? `\n🔮 Prévision d'expulsion demain : ${forecast.length}\n` + forecast.slice(0, 15).map(mention).join('\n')
+    : `\n🔮 Prévision d'expulsion demain : 0`
   const report = `🔁 <b>Recheck Spicy quotidien</b>\n\n` +
     `👥 Vérifiés : ${checked}\n✅ Gardés : ${kept}\n👢 Expulsés : ${kicked}\n` +
-    `🛡 Admins ignorés : ${skippedAdmin}\n❔ Indéterminés (gardés) : ${unknown}` +
-    (failed ? `\n⚠️ Échecs kick : ${failed}\n${failures.slice(0, 10).join('\n')}` : '')
-  await tg(token, 'sendMessage', { chat_id: OWNER_ID, text: report, parse_mode: 'HTML' })
+    `🛡 Admins ignorés : ${skippedAdmin}\n❔ Indéterminés (gardés) : ${unknown}\n` +
+    `⏳ En sursis : ${pending}` +
+    forecastLine +
+    (failed ? `\n\n⚠️ Échecs kick : ${failed}\n${failures.slice(0, 10).join('\n')}` : '')
+  await tg(token, 'sendMessage', { chat_id: OWNER_ID, text: report, parse_mode: 'HTML', disable_web_page_preview: true })
 
-  return new Response(JSON.stringify({ ok: true, checked, kept, kicked, skippedAdmin, unknown, failed }), {
+  return new Response(JSON.stringify({ ok: true, mode: 'enforce', checked, kept, kicked, skippedAdmin, unknown, pending, failed }), {
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+// ── Handler ─────────────────────────────────────────────────────
+Deno.serve(async (req) => {
+  const okRecheck = req.headers.get('x-recheck-secret') === Deno.env.get('RECHECK_SECRET')
+  const okCron = req.headers.get('x-cron-secret') === Deno.env.get('CRON_SECRET')
+  if (!okRecheck && !okCron) return new Response('forbidden', { status: 403 })
+
+  const token = Deno.env.get('BOT_TOKEN')!
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+
+  let mode = 'enforce'
+  try {
+    const body = await req.json()
+    if (body && body.mode === 'remind') mode = 'remind'
+  } catch { /* corps vide → enforce (rétro-compatible) */ }
+
+  return mode === 'remind' ? await runRemind(token, supabase) : await runEnforce(token, supabase)
 })
