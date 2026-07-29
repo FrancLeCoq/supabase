@@ -2,7 +2,7 @@
 //  daily-recheck — Edge Function Supabase (accès Golden Rooster).
 //
 //  RÈGLE : l'accès au groupe privé Spicy (« Golden Rooster ») est GRATUIT
-//  mais réservé aux MEMBRES de « The Chicken Coop » 🇺🇸 OU du
+//  mais réservé aux MEMBRES de « The Chicken Coop » 🇬🇧 OU du
 //  « Poulailler » 🇫🇷. Depuis que le groupe est référencé publiquement, on
 //  laisse un SURSIS aux nouveaux arrivants au lieu d'expulser sèchement
 //  (Telegram interdit au bot d'écrire en 1er à qui n'a pas lancé le bot, donc
@@ -34,7 +34,7 @@ const SPICY_DEEPLINK = 'https://t.me/FrancisLeCoqBot?start=spicy'
 const OWNER_ID = '6593812300'
 
 // Liens publics des deux groupes « passerelle ».
-const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇺🇸
+const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇬🇧
 const POUL_URL = 't.me/FrancisLeCoq'         // Le Poulailler 🇫🇷
 
 // Sursis (jours) avant expulsion. L'échéance tombe à 14h UTC (= 2:00 PM UTC).
@@ -48,7 +48,7 @@ const TIME_STR = { en: '2:00 PM UTC', fr: '14:00 UTC' }
 // groupes « passerelle » (Coop sous EN, Poulailler sous FR) → la boucle est bouclée.
 const GR_TR_BUTTON = { inline_keyboard: [
   [ { text: '🇬🇧 EN', callback_data: 'grtr:en' }, { text: '🇫🇷 FR', callback_data: 'grtr:fr' } ],
-  [ { text: 'The Chicken Coop 🇺🇸', url: 'https://t.me/LeCoqFrancis' }, { text: 'Le Poulailler 🇫🇷', url: 'https://t.me/FrancisLeCoq' } ],
+  [ { text: 'The Chicken Coop 🇬🇧', url: 'https://t.me/LeCoqFrancis' }, { text: 'Le Poulailler 🇫🇷', url: 'https://t.me/FrancisLeCoq' } ],
 ] }
 
 // ── Telegram helpers ────────────────────────────────────────────
@@ -86,10 +86,10 @@ async function dmKicked(token: string, userId: number) {
     disable_web_page_preview: true,
     text:
       `🔞 <b>Accès Spicy suspendu</b>\n` +
-      `Tu as été retiré de « Golden Rooster » car tu n'es plus membre de <b>The Chicken Coop</b> 🇺🇸 ni du <b>Poulailler</b> 🇫🇷.\n` +
+      `Tu as été retiré de « Golden Rooster » car tu n'es plus membre de <b>The Chicken Coop</b> 🇬🇧 ni du <b>Poulailler</b> 🇫🇷.\n` +
       `C'est <b>gratuit</b> : rejoins l'un des deux groupes puis reclique ci-dessous pour revenir. 🐓\n\n` +
       `🔞 <b>Spicy access paused</b>\n` +
-      `You were removed from "Golden Rooster" because you're no longer a member of <b>The Chicken Coop</b> 🇺🇸 or <b>Le Poulailler</b> 🇫🇷.\n` +
+      `You were removed from "Golden Rooster" because you're no longer a member of <b>The Chicken Coop</b> 🇬🇧 or <b>Le Poulailler</b> 🇫🇷.\n` +
       `It's <b>free</b>: join one of the two groups, then tap below to come back.`,
     reply_markup: { inline_keyboard: [[{ text: '🔞 Revenir dans Spicy / Come back', url: SPICY_DEEPLINK }]] },
   })
@@ -130,10 +130,10 @@ function buildReminderText(lang: 'en' | 'fr', todayCohort: any[], tomorrowCohort
   if (lang === 'fr') {
     let text =
       `🐓 <b>Golden Rooster :</b>\n✅ <b>Vérification d'adhésion</b>\n\n` +
-      `Avant d'accéder à Golden Rooster, assurez-vous d'avoir rejoint au préalable The Chicken Coop 🇺🇸 (ou Le Poulailler 🇫🇷).\n\n` +
-      `🇺🇸 <b>The Chicken Coop</b>\n👉 ${COOP_URL}\n\n` +
+      `Avant d'accéder à Golden Rooster, assurez-vous d'avoir rejoint au préalable The Chicken Coop 🇬🇧 (ou Le Poulailler 🇫🇷).\n\n` +
+      `🇬🇧 <b>The Chicken Coop</b>\n👉 ${COOP_URL}\n\n` +
       `🇫🇷 <b>Le Poulailler</b>\n👉 ${POUL_URL}\n\n` +
-      `🔒 Notre bot vérifie automatiquement votre adhésion à The Chicken Coop 🇺🇸 (ou Le Poulailler 🇫🇷) afin de maintenir votre accès à Golden Rooster.`
+      `🔒 Notre bot vérifie automatiquement votre adhésion à The Chicken Coop 🇬🇧 (ou Le Poulailler 🇫🇷) afin de maintenir votre accès à Golden Rooster.`
     if (todayCohort.length) text += `\n\n⚠️ Aujourd'hui à ${t}, les membres suivants perdront leur accès s'ils n'ont pas rejoint l'un des deux groupes avant cette échéance :\n` + todayCohort.map(line).join('\n')
     if (tomorrowCohort.length) text += `\n\n⚠️ Demain à ${t}, les membres suivants perdront leur accès s'ils n'ont pas rejoint l'un des deux groupes avant cette échéance :\n` + tomorrowCohort.map(line).join('\n')
     text += `\n\n🐓 Rejoignez dès maintenant l'univers de Francis Le Coq et conservez votre accès à Golden Rooster.`
@@ -142,10 +142,10 @@ function buildReminderText(lang: 'en' | 'fr', todayCohort: any[], tomorrowCohort
   // Anglais (défaut)
   let text =
     `🐓 <b>Golden Rooster:</b>\n✅ <b>Membership check</b>\n\n` +
-    `Before accessing Golden Rooster, make sure you have already joined The Chicken Coop 🇺🇸 (or Le Poulailler 🇫🇷).\n\n` +
-    `🇺🇸 <b>The Chicken Coop</b>\n👉 ${COOP_URL}\n\n` +
+    `Before accessing Golden Rooster, make sure you have already joined The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷).\n\n` +
+    `🇬🇧 <b>The Chicken Coop</b>\n👉 ${COOP_URL}\n\n` +
     `🇫🇷 <b>Le Poulailler</b>\n👉 ${POUL_URL}\n\n` +
-    `🔒 Our bot automatically checks your membership in The Chicken Coop 🇺🇸 (or Le Poulailler 🇫🇷) to keep your access to Golden Rooster.`
+    `🔒 Our bot automatically checks your membership in The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷) to keep your access to Golden Rooster.`
   if (todayCohort.length) text += `\n\n⚠️ Today at ${t}, the following members will lose their access unless they join one of the two groups before this deadline:\n` + todayCohort.map(line).join('\n')
   if (tomorrowCohort.length) text += `\n\n⚠️ Tomorrow at ${t}, the following members will lose their access unless they join one of the two groups before this deadline:\n` + tomorrowCohort.map(line).join('\n')
   text += `\n\n🐓 Join Francis Le Coq's universe now and keep your access to Golden Rooster.`
