@@ -125,16 +125,23 @@ async function compliance(token: string, uid: number): Promise<'in' | 'out' | 'u
 }
 
 // Construit le corps du rappel public à partir des deux cohortes.
+// Un bloc « aujourd'hui » / « demain » n'apparaît QUE s'il contient au moins un
+// membre (l'appelant, lui, n'envoie rien si les deux cohortes sont vides).
 function buildReminderText(todayCohort: any[], tomorrowCohort: any[]): string {
+  const line = (m: any) => '👉 ' + mention(m)
   let text =
-    `🐓 <b>Golden Rooster — membership check</b>\n\n` +
-    `Before entering "Golden Rooster", make sure you're already part of "The Chicken Coop" 🐓\n` +
-    `🇺🇸 ${COOP_URL}\n` +
-    `Or\n` +
-    `🇫🇷 ${POUL_URL}\n\n` +
-    `The two groups work together: our bot checks your membership in "The Chicken Coop" (or Le Poulailler) and keeps your access to "Golden Rooster" unlocked.`
-  if (todayCohort.length) text += `\n\n⏰ <b>Last check today at 14h UTC for:</b>\n` + todayCohort.map(mention).join('\n')
-  if (tomorrowCohort.length) text += `\n\n📅 <b>Last check tomorrow at 14h UTC for:</b>\n` + tomorrowCohort.map(mention).join('\n')
+    `🐓 <b>Golden Rooster — Vérification d'adhésion</b>\n\n` +
+    `Avant d'accéder à Golden Rooster, assurez-vous d'avoir rejoint au préalable The Chicken Coop (EN) ou Le Poulailler (FR).\n\n` +
+    `🇺🇸 <b>The Chicken Coop</b>\n👉 ${COOP_URL}\n\n` +
+    `🇫🇷 <b>Le Poulailler</b>\n👉 ${POUL_URL}\n\n` +
+    `🔒 Notre bot vérifie automatiquement votre adhésion à The Chicken Coop (ou Le Poulailler) afin de maintenir votre accès à Golden Rooster.`
+  if (todayCohort.length) {
+    text += `\n\n⚠️ Les membres suivants perdront leur accès <b>aujourd'hui à 14:00 UTC</b> s'ils n'ont pas rejoint l'un des deux groupes avant cette échéance :\n` + todayCohort.map(line).join('\n')
+  }
+  if (tomorrowCohort.length) {
+    text += `\n\n⚠️ Les membres suivants perdront leur accès <b>demain à 14:00 UTC</b> s'ils n'ont pas rejoint l'un des deux groupes avant cette échéance :\n` + tomorrowCohort.map(line).join('\n')
+  }
+  text += `\n\n🐓 Rejoignez dès maintenant l'univers de Francis Le Coq et conservez votre accès à Golden Rooster.`
   return text
 }
 
