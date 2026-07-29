@@ -367,6 +367,38 @@ Deno.serve(async (req) => {
         }
       }
 
+      // ── Rappel Golden Rooster : bouton 🇬🇧/🇫🇷 (rendu natif, déterministe) ──
+      // Réédite le message dans la langue choisie via le mode "render" de
+      // daily-recheck (pas de traduction IA : wording + heure exacts).
+      if (cb.data === 'grtr:en' || cb.data === 'grtr:fr') {
+        const lang = cb.data.split(':')[1]
+        const m: any = cb.message
+        if (m) {
+          try {
+            const cronSecret = Deno.env.get('CRON_SECRET') || ''
+            const r = await fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/daily-recheck', {
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+              body: JSON.stringify({ mode: 'render', lang }),
+            })
+            const j = await r.json()
+            if (j && j.text) {
+              await fetch(`https://api.telegram.org/bot${cbToken}/editMessageText`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: m.chat.id, message_id: m.message_id, text: j.text,
+                  parse_mode: 'HTML', disable_web_page_preview: true,
+                  reply_markup: { inline_keyboard: [[
+                    { text: '🇬🇧 EN', callback_data: 'grtr:en' },
+                    { text: '🇫🇷 FR', callback_data: 'grtr:fr' },
+                  ]] },
+                }),
+              })
+            }
+          } catch (e) { console.error('grtr:', String(e)) }
+        }
+        return new Response('ok')
+      }
+
       // ── Breaking news perso : ✅ Publier / ❌ Annuler (OWNER) ──
       if (cb.data === 'bn_pub' || cb.data === 'bn_cancel') {
         if (cbUser.id.toString() !== OWNER_ID) return new Response('ok')
