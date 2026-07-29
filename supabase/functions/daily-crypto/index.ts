@@ -201,6 +201,31 @@ async function fetchFearGreed(): Promise<string> {
   } catch { return '' }
 }
 
+// Émoticône associée à l'état de l'indice (classification alternative.me).
+const FNG_EMOJI: Record<string, string> = {
+  'Extreme Fear': '😱',
+  'Fear': '😨',
+  'Neutral': '😐',
+  'Greed': '🤑',
+  'Extreme Greed': '🤩',
+}
+// Ligne prête à afficher pour le Crypto Evening : "Fear & Greed Index: 36 (Fear 😨)".
+// L'état de l'indice est mis entre parenthèses à côté du chiffre, avec sa petite
+// émoticône associée. '' si l'API est indisponible (on omet alors la ligne).
+async function fetchFearGreedLine(): Promise<string> {
+  try {
+    const res = await tfetch('https://api.alternative.me/fng/?limit=1')
+    if (!res.ok) return ''
+    const d = await res.json()
+    const row = d && d.data ? d.data[0] : null
+    const v = Number(row && row.value)
+    const cls = String((row && row.value_classification) || '').trim()
+    if (!isFinite(v) || !cls) return ''
+    const emoji = FNG_EMOJI[cls] || ''
+    return 'Fear & Greed Index: ' + v + ' (' + cls + (emoji ? ' ' + emoji : '') + ')'
+  } catch { return '' }
+}
+
 // -- Découpe accroche / explication (sans regex) ---------------
 function splitAccroche(s: string): string {
   const t = s.trim()
@@ -372,7 +397,7 @@ function formatPromptEveningBlurb(facts: string): string {
 }
 
 async function generateEvening(): Promise<{ ok: boolean; text: string; reason: string; logText?: string }> {
-  const [stockBlock, cryptoBlock] = await Promise.all([fetchStockBlock(), fetchCryptoBlock()])
+  const [stockBlock, cryptoBlock, fngLine] = await Promise.all([fetchStockBlock(), fetchCryptoBlock(), fetchFearGreedLine()])
   const facts = await groundedSearch(searchPromptEveningMood())
   let blurb = ''
   if (facts && facts.toUpperCase().indexOf('NONE') !== 0) {
@@ -380,10 +405,12 @@ async function generateEvening(): Promise<{ ok: boolean; text: string; reason: s
     if (b && b.toUpperCase().indexOf('NONE') !== 0) blurb = b.trim()
   }
   if (!blurb && !stockBlock && !cryptoBlock) return { ok: false, text: '', reason: 'evening: ni laius ni donnees marche' }
-  // Ordre voulu : les DONNEES d'abord (cryptos puis bourses), le laius A LA FIN.
+  // Ordre voulu : les DONNEES d'abord (cryptos puis bourses), l'indice Fear &
+  // Greed juste apres, puis le laius A LA FIN.
   const parts: string[] = [SLOT_HOOK.evening]
   if (cryptoBlock) parts.push('', cryptoBlock)
   if (stockBlock) parts.push('', stockBlock)
+  if (fngLine) parts.push('', fngLine)
   if (blurb) parts.push('', blurb)
   // On ne JOURNALISE que le laius : le recap Crypto Night le reprend tel quel.
   const logText = blurb || 'Markets & crypto mood update this evening.'
@@ -453,6 +480,7 @@ async function translateToFrench(text: string): Promise<string> {
     'RULES:',
     '- Keep ALL emojis exactly where they are, and keep the same line breaks / layout.',
     '- Do NOT translate or alter: "$FRANC", ticker symbols, numbers, %, prices, URLs, coin/person/product names.',
+    '- Keep the whole "Fear & Greed Index" line UNCHANGED, in English, including the sentiment word in parentheses (Fear, Greed, Neutral, Extreme Fear, Extreme Greed) and its emoji. Do NOT translate it.',
     '- Translate the leading section title too (e.g. "⏰ Crypto Morning:" -> "⏰ Crypto Matin :").',
     '- Natural French, no robotic tone. Output ONLY the translated message, nothing else.',
     '',
