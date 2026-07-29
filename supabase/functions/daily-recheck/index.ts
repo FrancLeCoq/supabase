@@ -180,12 +180,16 @@ async function runRemind(token: string, supabase: any, test = false): Promise<Re
     const s = (u: string | null, n: string, id: number) => ({ username: u, name: n, telegram_id: id })
     const today = [s('john_doe', 'John', 111), s(null, 'Marie', 222)]
     const tomorrow = [s('paul_x', 'Paul', 333)]
-    for (const lang of ['en', 'fr'] as const) {
-      await tg(token, 'sendMessage', {
+    for (const l of ['en', 'fr'] as const) {
+      const sent = await tg(token, 'sendMessage', {
         chat_id: Number(OWNER_ID),
-        text: `🧪 <i>Aperçu du rappel Golden Rooster — ${lang.toUpperCase()} (données fictives, non posté dans le groupe) :</i>\n\n` + buildReminderText(lang, today, tomorrow),
+        text: `🧪 <i>Aperçu du rappel Golden Rooster — ${l.toUpperCase()} (données fictives, non posté dans le groupe) :</i>\n\n` + buildReminderText(l, today, tomorrow),
         parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: GR_TR_BUTTON,
       })
+      // Snapshot pour que le bouton 🇬🇧/🇫🇷 retrouve les mêmes noms fictifs.
+      if (sent?.ok && sent.result?.message_id) {
+        await supabase.from('gr_reminder').upsert({ chat_id: Number(OWNER_ID), message_id: sent.result.message_id, today, tomorrow })
+      }
     }
     return new Response(JSON.stringify({ ok: true, mode: 'remind', test: true }), { headers: { 'Content-Type': 'application/json' } })
   }
@@ -232,6 +236,10 @@ async function runRemind(token: string, supabase: any, test = false): Promise<Re
       disable_web_page_preview: true, reply_markup: GR_TR_BUTTON,
     })
     posted = !!(sent && sent.ok)
+    // Snapshot des cohortes → le bouton 🇬🇧/🇫🇷 re-rend le message à l'identique.
+    if (sent?.ok && sent.result?.message_id) {
+      await supabase.from('gr_reminder').upsert({ chat_id: SPICY_GROUP_ID, message_id: sent.result.message_id, today: todayCohort, tomorrow: tomorrowCohort })
+    }
   }
 
   return new Response(JSON.stringify({ ok: true, mode: 'remind', today: todayCohort.length, tomorrow: tomorrowCohort.length, posted }), {
@@ -325,16 +333,28 @@ Deno.serve(async (req) => {
   let mode = 'enforce'
   let test = false
   let lang: 'en' | 'fr' = 'en'
+  let chatId = 0, messageId = 0
   try {
     const body = await req.json()
     if (body && body.mode === 'remind') mode = 'remind'
     if (body && body.mode === 'render') mode = 'render'
     if (body && body.test === true) test = true
     if (body && body.lang === 'fr') lang = 'fr'
+    chatId = Number(body?.chat_id || 0)
+    messageId = Number(body?.message_id || 0)
   } catch { /* corps vide → enforce (rétro-compatible) */ }
 
   if (mode === 'render') {
-    const { today, tomorrow } = await cohortsFromDB(supabase)
+    // On re-rend à partir du SNAPSHOT du message (déterministe) ; à défaut on
+    // retombe sur les cohortes vivantes en base.
+    let today: any[] = [], tomorrow: any[] = []
+    if (chatId && messageId) {
+      const { data: snap } = await supabase.from('gr_reminder').select('today, tomorrow').eq('chat_id', chatId).eq('message_id', messageId).maybeSingle()
+      if (snap) { today = snap.today || []; tomorrow = snap.tomorrow || [] }
+      else { const c = await cohortsFromDB(supabase); today = c.today; tomorrow = c.tomorrow }
+    } else {
+      const c = await cohortsFromDB(supabase); today = c.today; tomorrow = c.tomorrow
+    }
     return new Response(JSON.stringify({ ok: true, text: buildReminderText(lang, today, tomorrow) }), { headers: { 'Content-Type': 'application/json' } })
   }
   return mode === 'remind' ? await runRemind(token, supabase, test) : await runEnforce(token, supabase)

@@ -378,7 +378,7 @@ Deno.serve(async (req) => {
             const cronSecret = Deno.env.get('CRON_SECRET') || ''
             const r = await fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/daily-recheck', {
               method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
-              body: JSON.stringify({ mode: 'render', lang }),
+              body: JSON.stringify({ mode: 'render', lang, chat_id: m.chat.id, message_id: m.message_id }),
             })
             const j = await r.json()
             if (j && j.text) {
