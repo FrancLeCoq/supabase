@@ -853,6 +853,61 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
+    //  /modo (OWNER) — annuaire de toutes les commandes, bien classé.
+    //  /gemini (OWNER) — modèles IA utilisés par fonctionnalité.
+    // ══════════════════════════════════════════════════════════
+    if (text === '/modo') {
+      if (userId !== OWNER_ID) return new Response('ok')
+      await sendMessage(token, chatId,
+        `🛠️ <b>Commandes disponibles</b>\n\n` +
+        `<b>1️⃣ Setup (messages épinglés)</b>\n` +
+        `/setup — Menu principal\n/setupwallet — Topic Wallet\n/setupgames — Topic Games\n` +
+        `/setupchickencoop — The Chicken Coop (General)\n/setuphotwings — Topic Hot Wings\n` +
+        `/setupcryptocoop — Topic Crypto Coop\n/setupworldroost — Topic World Roost\n/setuptrump — Topic Trump News\n\n` +
+        `<b>2️⃣ Racing</b> (EN Coop + FR Poulailler)\n` +
+        `/F1essais · /GPessais — Essais libres\n/F1qualifs · /GPqualifs — Qualifications\n` +
+        `/F1qualifssprint · /GPqualifssprint — Qualifs sprint\n/F1sprint · /GPsprint — Course sprint\n` +
+        `/F1course · /GPcourse — Course (GP)\n/F1we · /GPwe — Programme du week-end\n/F1news · /GPnews — Potins paddock\n\n` +
+        `<b>3️⃣ Breaking news perso</b>\n` +
+        `/f1 — Breaking news F1\n/motogp — Breaking news MotoGP\n/worldroost — Breaking news World Roost\n` +
+        `/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n\n` +
+        `<b>4️⃣ Textes pour X</b>\n` +
+        `/xf1 — Post X F1\n/xmotogp — Post X MotoGP\n/xcrypto — Post X Crypto\n` +
+        `/xnews — Post X actu internationale\n/xfranc — Post X $FRANC (CA + liens)\n\n` +
+        `<b>5️⃣ Modération</b>\n` +
+        `/stopbotuser — Couper le bot pour un user (DM)\n/stopbotpoulailleruser — … dans Le Poulailler\n` +
+        `/stopbotchickencoopuser — … dans The Chicken Coop\n` +
+        `/playbotuser · /playbotpoulailleruser · /playbotchickencoopuser — Réactiver un user\n` +
+        `/stopbot · /stopbotpoulailler · /stopbotchickencoop — Couper par groupe\n` +
+        `/playbot · /playbotpoulailler · /playbotchickencoop — Réactiver par groupe\n` +
+        `/enablesecretary — Mode secrétaire Business\n\n` +
+        `<b>6️⃣ Publiques (tous)</b>\n` +
+        `/start · /help · /rules · /status · /ca · /nodm\n` +
+        `/spicy (= /holders) — accès Golden Rooster\n` +
+        `/connect · /connecton · /connectsolana · /disconnect — wallet\n` +
+        `/buystars · /cashback — Stars & cashback\n/en · /fr — langue · /play · /skip — jeux\n\n` +
+        `<b>ℹ️ Utilitaires</b>\n/modo — cette liste\n/gemini — modèles IA par fonctionnalité`)
+      return new Response('ok')
+    }
+
+    if (text === '/gemini') {
+      if (userId !== OWNER_ID) return new Response('ok')
+      await sendMessage(token, chatId,
+        `🤖 <b>Modèles Gemini par fonctionnalité</b>\n` +
+        `<i>(sollicitations = passages programmés par jour)</i>\n\n` +
+        `<b>1️⃣ Gemini 2.5 Flash-Lite</b> — recherche web (primaire)\n` +
+        `Daily-crypto : 4/jour\nDaily-pump : 2/jour\n<i>(+ repli pour Daily-world & Racing)</i>\n\n` +
+        `<b>2️⃣ Gemini 2.5 Flash</b> — recherche web (primaire)\n` +
+        `Daily-world : 6/jour\nRacing : à la demande\n<i>(+ repli pour Daily-crypto & Daily-pump)</i>\n\n` +
+        `<b>3️⃣ Gemini 3.1 Flash-Lite</b> — mise en forme & traduction\n` +
+        `Daily-crypto : 4/jour\nDaily-world : 6/jour\nDaily-pump : 2/jour\nDaily-hot : 3/jour\n` +
+        `Daily-general : 2/jour\nTrump-news : en pause\nRacing : à la demande\nBreaking-news : à la demande\n\n` +
+        `<b>4️⃣ Gemini 3.5 Flash</b> — génération (sans recherche)\n` +
+        `Daily-fact-dyk : 1/jour <i>(repli 3.1 Flash-Lite)</i>`)
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  /enablesecretary (OWNER) — active le mode secrétaire Business :
     //  déclare les updates business au webhook. À lancer UNE fois, puis
     //  reconnecter le bot dans Réglages → Business → Chatbots.
