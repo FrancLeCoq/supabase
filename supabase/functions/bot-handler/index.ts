@@ -853,10 +853,12 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    //  /modo (OWNER) — annuaire de toutes les commandes, bien classé.
-    //  /gemini (OWNER) — modèles IA utilisés par fonctionnalité.
+    //  /commandes (OWNER) — annuaire de toutes les commandes, bien classé.
+    //  /horaires  (OWNER) — programme journalier d'envoi (heure de Paris).
+    //  /gemini    (OWNER) — modèles IA utilisés par fonctionnalité.
+    //  (singulier ou pluriel : les deux formes fonctionnent)
     // ══════════════════════════════════════════════════════════
-    if (text === '/modo') {
+    if (text === '/commandes' || text === '/commande') {
       if (userId !== OWNER_ID) return new Response('ok')
       await sendMessage(token, chatId,
         `🛠️ <b>Commandes disponibles</b>\n\n` +
@@ -886,7 +888,39 @@ Deno.serve(async (req) => {
         `/spicy (= /holders) — accès Golden Rooster\n` +
         `/connect · /connecton · /connectsolana · /disconnect — wallet\n` +
         `/buystars · /cashback — Stars & cashback\n/en · /fr — langue · /play · /skip — jeux\n\n` +
-        `<b>ℹ️ Utilitaires</b>\n/modo — cette liste\n/gemini — modèles IA par fonctionnalité`)
+        `<b>ℹ️ Utilitaires</b>\n/commandes — cette liste\n/horaires — programme journalier\n/gemini — modèles IA par fonctionnalité`)
+      return new Response('ok')
+    }
+
+    if (text === '/horaires' || text === '/horaire') {
+      if (userId !== OWNER_ID) return new Response('ok')
+      await sendMessage(token, chatId,
+        `🕒 <b>Programme journalier d'envoi</b>\n<i>(heure de Paris)</i>\n\n` +
+        `<b>1️⃣ The Chicken Coop 🇬🇧 &amp; Le Poulailler 🇫🇷</b>\n` +
+        `07h00 — 🌍 World Roost · Matin\n` +
+        `07h55 — ⏰ Crypto Morning\n` +
+        `08h50 — 😄 Blague du matin\n` +
+        `09h45 — ⚡ Cocorico Dump\n` +
+        `10h40 — 🌍 World Roost · Éco\n` +
+        `12h30 — 🌞 Crypto Midday\n` +
+        `13h25 — 🌍 World Roost · Midi\n` +
+        `14h20 — 💡 Le savais-tu ?\n` +
+        `16h10 — 🌍 World Roost · Tech\n` +
+        `17h05 — 🚀 Cocorico Pump\n` +
+        `18h00 — 🌍 World Roost · Soir\n` +
+        `18h55 — 🌆 Crypto Evening\n` +
+        `20h45 — 🌙 Crypto Night\n` +
+        `21h40 — 🌍 World Roost · Nuit\n` +
+        `22h30 — 🌙 Bonne nuit\n\n` +
+        `<b>2️⃣ Golden Rooster 🔞</b>\n` +
+        `11h35 — 🌶️ Hot News · Matin\n` +
+        `15h15 — 🌶️ Hot News · Midi\n` +
+        `19h50 — 🌶️ Hot News · Soir\n` +
+        `🖼️ Feed images : chaque heure (via le NAS)\n` +
+        `🔒 Vérif adhésion : rappel 06:00 UTC · expulsion 09:00 UTC\n\n` +
+        `<b>ℹ️ Interne (toi seul)</b>\n` +
+        `22h40 — 📊 Rapport quotidien\n` +
+        `23h00 — 🧹 Nettoyage mémoire`)
       return new Response('ok')
     }
 
