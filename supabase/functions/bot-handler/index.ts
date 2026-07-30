@@ -479,12 +479,13 @@ Deno.serve(async (req) => {
         const m: any = cb.message
         if (m) {
           try {
-            const { data: snap } = await cbSupa.from('news_i18n').select('en, fr').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
+            const { data: snap } = await cbSupa.from('news_i18n').select('en, fr, html').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
             const text = snap ? (lang === 'fr' ? snap.fr : snap.en) : null
             if (text) {
               const isCaption = m.caption !== undefined && m.caption !== null
               const method = isCaption ? 'editMessageCaption' : 'editMessageText'
               const payload: any = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: NLANG_BTN }
+              if (snap.html) payload.parse_mode = 'HTML'   // ex. breaking news (balises <b>)
               if (isCaption) payload.caption = text
               else { payload.text = text; payload.disable_web_page_preview = true }
               await fetch(`https://api.telegram.org/bot${cbToken}/${method}`, {
@@ -517,8 +518,12 @@ Deno.serve(async (req) => {
         if (!m) { await sendMessage(cbToken, cbUser.id, '⚠️ Catégorie inconnue, publication annulée.'); await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id); return new Response('ok') }
         const enMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.en}`
         const frMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.fr}`
-        await sendMessage(cbToken, CHICKEN_COOP, enMsg, { message_thread_id: m.en, reply_markup: TR_BUTTON })
-        await sendMessage(cbToken, POULAILLER_FR, frMsg, { message_thread_id: m.fr, reply_markup: TR_BUTTON })
+        // Même mécanique que les news auto : bouton 🇬🇧/🇫🇷 pré-enregistré (bascule
+        // instantanée via news_i18n, sans appel Gemini). html:true car balises <b>.
+        const sentEn = await sendMessage(cbToken, CHICKEN_COOP, enMsg, { message_thread_id: m.en, reply_markup: NLANG_BTN })
+        const sentFr = await sendMessage(cbToken, POULAILLER_FR, frMsg, { message_thread_id: m.fr, reply_markup: NLANG_BTN })
+        if (sentEn?.message_id) await cbSupa.from('news_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sentEn.message_id, en: enMsg, fr: frMsg, html: true })
+        if (sentFr?.message_id) await cbSupa.from('news_i18n').upsert({ chat_id: POULAILLER_FR, message_id: sentFr.message_id, en: enMsg, fr: frMsg, html: true })
         await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id)
         await sendMessage(cbToken, cbUser.id, '✅ Breaking news publiée dans les deux groupes.')
         return new Response('ok')
