@@ -505,26 +505,51 @@ Deno.serve(async (req) => {
         return new Response('ok')
       }
 
-      // ── News auto : bouton 🇬🇧/🇫🇷 (bascule INSTANTANÉE, pré-enregistrée) ──
-      // Les deux versions sont stockées dans news_i18n au moment de l'envoi →
-      // aucun appel Gemini, wording exact, marche pour photo (légende) ou texte.
+      // ── News auto : bouton 🇬🇧/🇫🇷 (bascule pré-enregistrée, sans Gemini) ──
+      // La news reste par DÉFAUT en anglais (le message est partagé par tout le
+      // groupe). Un clic sur 🇫🇷 montre le français ~20 s AVEC un décompte dans
+      // le bouton, puis revient tout seul en anglais. 🇬🇧 rebascule tout de suite.
       if (cb.data === 'nlang:en' || cb.data === 'nlang:fr') {
         const lang = cb.data.split(':')[1]
         const m: any = cb.message
         if (m) {
           try {
             const { data: snap } = await cbSupa.from('news_i18n').select('en, fr, html').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
-            const text = snap ? (lang === 'fr' ? snap.fr : snap.en) : null
-            if (text) {
+            if (snap) {
               const isCaption = m.caption !== undefined && m.caption !== null
               const method = isCaption ? 'editMessageCaption' : 'editMessageText'
-              const payload: any = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: NLANG_BTN }
-              if (snap.html) payload.parse_mode = 'HTML'   // ex. breaking news (balises <b>)
-              if (isCaption) payload.caption = text
-              else { payload.text = text; payload.disable_web_page_preview = true }
-              await fetch(`https://api.telegram.org/bot${cbToken}/${method}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-              })
+              // Édite le CORPS (texte/légende) + le clavier.
+              const editBody = async (txt: string, kb: any) => {
+                const p: any = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: kb }
+                if (snap.html) p.parse_mode = 'HTML'
+                if (isCaption) p.caption = txt
+                else { p.text = txt; p.disable_web_page_preview = true }
+                await fetch(`https://api.telegram.org/bot${cbToken}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+              }
+              // Met à jour SEULEMENT le clavier (n'ajoute pas la mention « modifié »).
+              const setBtn = async (kb: any) => {
+                await fetch(`https://api.telegram.org/bot${cbToken}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: m.chat.id, message_id: m.message_id, reply_markup: kb }) })
+              }
+              const frBtn = (s: number) => ({ inline_keyboard: [[
+                { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+                { text: `🇫🇷 FR · ${s}s`, callback_data: 'nlang:fr' },
+              ]] })
+
+              if (lang === 'en') {
+                await editBody(snap.en, NLANG_BTN)
+              } else {
+                await editBody(snap.fr, frBtn(20))
+                // Décompte + retour auto à l'anglais, en tâche de fond.
+                const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+                const bg = (async () => {
+                  try {
+                    for (let s = 19; s >= 1; s--) { await sleep(1000); await setBtn(frBtn(s)) }
+                    await sleep(1000)
+                    await editBody(snap.en, NLANG_BTN)
+                  } catch (_) { /* message supprimé / trop ancien : on ignore */ }
+                })()
+                ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
+              }
             }
           } catch (e) { console.error('nlang:', String(e)) }
         }
@@ -1524,7 +1549,7 @@ Deno.serve(async (req) => {
         `Repère-toi facilement :\n` +
         `💰 <b>Crypto Cocorico</b> — l'actu crypto en continu, décryptée\n` +
         `📰 <b>Le Chant du Monde</b> — les grandes actus internationales, chaque jour\n` +
-        `🔥 <b>Le Poulailler Interdit</b> — l'actu hot à ne pas manquer\n` +
+        `🔥 <b>Hot Wings</b> — l'actu hot à ne pas manquer\n` +
         `🏁 <b>Cocorico Racing</b> — F1 & MotoGP, les temps forts course après course\n` +
         `🎮 <b>Jeux</b> — des mini-jeux uniques à l'effigie du coq\n` +
         `🔞 <b>Les Plumes Chaudes (bientôt)</b> — le contenu très hot des dev, à venir\n` +
@@ -1559,8 +1584,8 @@ Deno.serve(async (req) => {
         `👉 19:50 — Hot evening`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       ,
-        `🌶️ <b>Le Poulailler Interdit</b>\n\n` +
-        `Le coin le plus épicé du poulailler : l'actu à ne pas manquer de l'industrie du divertissement pour adultes — sorties, stars, lancements, récompenses et gros mouvements. Taquin et coquin, toujours avec classe. 🔥\n\n` +
+        `🌶️ <b>Hot Wings</b>\n\n` +
+        `Le coin le plus épicé du groupe : l'actu à ne pas manquer de l'industrie du divertissement pour adultes — sorties, stars, lancements, récompenses et gros mouvements. Taquin et coquin, toujours avec classe. 🔥\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
         `👉 11:35 — Hot du matin\n` +
         `👉 15:15 — Hot du midi\n` +
