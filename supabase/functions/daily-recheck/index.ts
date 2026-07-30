@@ -9,12 +9,12 @@
 //   on ne peut pas prévenir chacun en DM → on prévient dans le groupe).
 //
 //  PASSAGES (pg_cron, corps {"mode":"..."}) :
-//    • mode "remind"  — 12:00 UTC : marque les non-conformes (échéance =
-//        aujourd'hui + GRACE_DAYS à 14h UTC) et poste UN rappel public dans
+//    • mode "remind"  — 06:00 UTC : marque les non-conformes (échéance =
+//        aujourd'hui + GRACE_DAYS à 9h UTC) et poste UN rappel public dans
 //        le #General de « Golden Rooster ». Message par DÉFAUT en ANGLAIS,
 //        bouton 🇬🇧/🇫🇷 pour basculer vers la version française (rendu natif,
 //        pas de traduction IA). N'EXPULSE PERSONNE.
-//    • mode "enforce" — 14:00 UTC : expulse les échéances dépassées + rapport
+//    • mode "enforce" — 09:00 UTC : expulse les échéances dépassées + rapport
 //        owner (avec « prévision d'expulsion demain »). Mode par défaut.
 //    • mode "render"  — sans effet de bord : renvoie {text} du rappel dans la
 //        langue demandée (utilisé par le bouton 🇬🇧/🇫🇷 de bot-handler).
@@ -37,11 +37,11 @@ const OWNER_ID = '6593812300'
 const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇺🇸
 const POUL_URL = 't.me/FrancisLeCoq'         // Le Poulailler 🇫🇷
 
-// Sursis (jours) avant expulsion. L'échéance tombe à 14h UTC (= 2:00 PM UTC).
+// Sursis (jours) avant expulsion. L'échéance tombe à 9h UTC (= 9:00 AM UTC).
 const GRACE_DAYS = 2
 
-// Heure d'expulsion, écrite selon la langue (14h UTC en FR, 2:00 PM en EN).
-const TIME_STR = { en: '2:00 PM UTC', fr: '14:00 UTC' }
+// Heure d'expulsion, écrite selon la langue (9h UTC en FR, 9:00 AM en EN).
+const TIME_STR = { en: '9:00 AM UTC', fr: '9:00 UTC' }
 
 // Clavier sous le rappel : ligne 1 = bascule langue 🇬🇧/🇫🇷 (rendu natif, géré
 // par bot-handler via grtr:en / grtr:fr) ; ligne 2 = accès direct aux deux
@@ -99,7 +99,7 @@ async function dmKicked(token: string, userId: number) {
 function deadlineFromNow(): string {
   const d = new Date()
   d.setUTCDate(d.getUTCDate() + GRACE_DAYS)
-  d.setUTCHours(14, 0, 0, 0)
+  d.setUTCHours(9, 0, 0, 0)
   return d.toISOString()
 }
 function ymd(d: Date): string { return d.toISOString().slice(0, 10) }

@@ -64,6 +64,72 @@ async function sendSpicyInvite(token: string, userId: number, isFR: boolean): Pr
 }
 
 // ══════════════════════════════════════════════════════════════
+//  MESSAGES DE BIENVENUE (nouveaux arrivants, postés DANS le groupe)
+//   • Golden Rooster : version adaptée selon que la personne est déjà
+//     membre de Coop/Poulailler (vérif individuelle à l'arrivée).
+//   • The Chicken Coop (EN) / Le Poulailler (FR) : accueil + accès au bot.
+// ══════════════════════════════════════════════════════════════
+const ALL_GAMES_BTN = { text: 'All games & Rooster universe', url: MENU_DEEPLINK }
+
+// Mention cliquable (ping même sans @username).
+function userMention(u: any): string {
+  if (u?.username) return '@' + u.username
+  const nm = String(u?.first_name || 'friend').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return `<a href="tg://user?id=${u.id}">${nm}</a>`
+}
+
+// Golden Rooster — NON membre d'un des deux groupes requis.
+function grWelcomeNotMember(m: string) {
+  return {
+    text:
+      `🤩 <b>Bienvenue ${m} dans Golden Rooster !</b> 🐓\n\n` +
+      `Préparez-vous à découvrir un espace rempli de contenu exclusif 🔞.\n\n` +
+      `🔓 Pour conserver votre accès à <b>Golden Rooster</b>, pensez à rejoindre <b>The Chicken Coop</b> 🇬🇧 ou <b>Le Poulailler</b> 🇫🇷. Notre bot vérifie automatiquement votre adhésion.\n\n` +
+      `🇺🇸 The Chicken Coop\n👉 t.me/LeCoqFrancis\n\n` +
+      `🇫🇷 Le Poulailler\n👉 t.me/FrancisLeCoq\n\n` +
+      `Amusez-vous bien et bienvenue dans l'univers de <b>Francis Le Coq</b> ! 🔥🐓`,
+    reply_markup: { inline_keyboard: [
+      [ { text: '🇺🇸 The Chicken Coop', url: CHICKEN_COOP_URL }, { text: '🇫🇷 Le Poulailler', url: POULAILLER_URL } ],
+      [ ALL_GAMES_BTN ],
+    ] },
+  }
+}
+
+// Golden Rooster — DÉJÀ membre.
+function grWelcomeMember(m: string) {
+  return {
+    text:
+      `🤩 <b>Bienvenue ${m} dans Golden Rooster !</b> 🐓\n\n` +
+      `Préparez-vous à découvrir un espace rempli de contenu exclusif 🔞 et de nombreuses surprises.\n\n` +
+      `🎮 Envie d'aller encore plus loin ? Discutez avec notre bot (lien ci-dessous) pour débloquer encore plus de jeux, de fonctionnalités et de contenus exclusifs.\n\n` +
+      `✨ <b>Tout est gratuit, alors profitez-en !</b>`,
+    reply_markup: { inline_keyboard: [[ ALL_GAMES_BTN ]] },
+  }
+}
+
+// Le Poulailler (FR).
+function poulWelcome(m: string) {
+  return {
+    text:
+      `🤩 <b>Bienvenue ${m} dans Le Poulailler !</b> 🐓\n\n` +
+      `Préparez-vous à découvrir un espace rempli d'actualités, de jeux, de contenu exclusif et de nombreuses surprises chaque jour. 👀\n\n` +
+      `🎮 Envie d'aller encore plus loin ? Discutez avec notre bot (lien ci-dessous) pour débloquer encore plus de jeux, de fonctionnalités et de contenus exclusifs. 🚀`,
+    reply_markup: { inline_keyboard: [[ ALL_GAMES_BTN ]] },
+  }
+}
+
+// The Chicken Coop (EN).
+function coopWelcome(m: string) {
+  return {
+    text:
+      `🤩 <b>Welcome ${m} to The Chicken Coop!</b> 🐓\n\n` +
+      `Get ready to discover a space full of news, games, exclusive content and lots of surprises every day. 👀\n\n` +
+      `🎮 Want to go even further? Chat with our bot (link below) to unlock even more games, features and exclusive content. 🚀`,
+    reply_markup: { inline_keyboard: [[ ALL_GAMES_BTN ]] },
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  Mentions "rejoins le poulailler" à coller EN COMMENTAIRE d'un post X.
 //  Le lien t.me dans le post LUI-MÊME provoque un shadowban : on ne le met
 //  donc plus dans les copies owner, il se poste en commentaire via /x…
@@ -151,40 +217,44 @@ Deno.serve(async (req) => {
     // propre table group_members via cet événement, pour le recheck quotidien.
     if (update.chat_member) {
       const cm = update.chat_member
-      if (cm.chat?.id === HOLDERS_GROUP_ID) {
+      const chatIdCm = cm.chat?.id
+      const u = cm.new_chat_member?.user
+      const newStatus = cm.new_chat_member?.status
+      const isInNow = ['member', 'administrator', 'creator', 'restricted'].includes(newStatus || '')
+      const wasIn = ['member', 'administrator', 'creator', 'restricted'].includes(cm.old_chat_member?.status || '')
+      if (u && !u.is_bot) {
         const token = Deno.env.get('BOT_TOKEN')!
         const supabase = createClient(
           Deno.env.get('SUPABASE_URL')!,
           Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         )
-        const u = cm.new_chat_member?.user
-        const newStatus = cm.new_chat_member?.status
-        if (u && !u.is_bot) {
-          const isIn = newStatus === 'member' || newStatus === 'administrator' || newStatus === 'creator' || newStatus === 'restricted'
-          if (isIn) {
+        const mention = userMention(u)
+
+        if (chatIdCm === HOLDERS_GROUP_ID) {
+          if (isInNow) {
             await supabase.from('group_members').upsert({
               telegram_id: u.id,
               username: u.username || null,
               name: [u.first_name, u.last_name].filter(Boolean).join(' ') || null,
               status: 'member'
             }, { onConflict: 'telegram_id' })
-            // Petit mot de bienvenue en DM, UNIQUEMENT sur une vraie nouvelle
-            // arrivée (pas une promotion admin d'un membre déjà présent).
-            const wasIn = ['member', 'administrator', 'creator', 'restricted'].includes(cm.old_chat_member?.status || '')
+            // Accueil public UNIQUEMENT sur une vraie nouvelle arrivée (pas une
+            // promotion). Vérif individuelle → version adaptée (membre ou non).
             if (!wasIn) {
               try {
-                const isFR = await getLang(supabase, u.id.toString()) === 'fr'
-                await sendMessage(token, u.id, isFR
-                  ? '🔞 Bienvenue dans le poulailler interdit 🔞'
-                  : '🔞 Welcome to the Forbidden Coop 🔞')
-              } catch (_) { /* la personne n'a peut-être pas ouvert le bot en privé */ }
+                const already = await isCoopMember(token, u.id)
+                const w = already ? grWelcomeMember(mention) : grWelcomeNotMember(mention)
+                await sendMessage(token, HOLDERS_GROUP_ID, w.text, { reply_markup: w.reply_markup })
+              } catch (e) { console.error('GR welcome:', String(e)) }
             }
           } else {
             // left / kicked / banned
-            await supabase.from('group_members')
-              .update({ status: 'kicked' })
-              .eq('telegram_id', u.id)
+            await supabase.from('group_members').update({ status: 'kicked' }).eq('telegram_id', u.id)
           }
+        } else if (chatIdCm === CHICKEN_COOP && isInNow && !wasIn) {
+          try { const w = coopWelcome(mention); await sendMessage(token, CHICKEN_COOP, w.text, { reply_markup: w.reply_markup }) } catch (e) { console.error('Coop welcome:', String(e)) }
+        } else if (chatIdCm === POULAILLER_FR && isInNow && !wasIn) {
+          try { const w = poulWelcome(mention); await sendMessage(token, POULAILLER_FR, w.text, { reply_markup: w.reply_markup }) } catch (e) { console.error('Poul welcome:', String(e)) }
         }
       }
       return new Response('ok')
