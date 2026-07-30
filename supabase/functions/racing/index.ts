@@ -41,6 +41,23 @@ const OWNER_ID = 6593812300         // DM du owner en cas d'echec
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
   return await globalThis.fetch(input, { ...init, signal: AbortSignal.timeout(ms) })
 }
+
+// Bouton 🇬🇧/🇫🇷 pré-enregistré (bascule instantanée via news_i18n, sans IA).
+const NLANG_BTN = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
+]] }
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !messageId) return
+  try {
+    await tfetch(url + '/rest/v1/news_i18n', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+    })
+  } catch (e) { console.error('storeI18n', String(e)) }
+}
 function geminiUrl(model: string): string {
   const key = Deno.env.get('GEMINI_API_KEY') || ''
   return 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key
@@ -220,25 +237,23 @@ async function runCommand(token: string, command: string): Promise<void> {
   // le titre (pas de ligne vide) ; ailleurs on garde une ligne vide aérée.
   const headSep = (type === 'we') ? NL : NL + NL
 
-  // EN -> The Chicken Coop (1631)
+  // The Chicken Coop (Cocorico Racing, 1631) : EN par défaut + bouton 🇬🇧/🇫🇷.
+  // Poulailler supprimé : la version FR reste accessible via le bouton.
   const en = shortenTeams(await formatCall(formatPrompt('English', sportShort, type, facts)))
-  if (en && en.toUpperCase().indexOf('NONE') !== 0) {
+  const fr = shortenTeams(await formatCall(formatPrompt('French', sportShort, type, facts)))
+  const enOk = en && en.toUpperCase().indexOf('NONE') !== 0
+  const frOk = fr && fr.toUpperCase().indexOf('NONE') !== 0
+  if (enOk) {
     const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + weSuffix + headSep + en
-    const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN)
+    const frMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + headSep + fr
+    const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN, NLANG_BTN)
     if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
-    // Copie EN -> owner (pour coller sur X), avec boutons Copier + Publier sur X.
-    // Sans lien : le CTA se met en commentaire via /xf1 ou /xmotogp.
+    if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
+    // Copie EN -> owner (pour coller sur X). Sans lien (CTA en commentaire via /xf1…).
     await dmOwnerCopy(token, enMsg)
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
-  // FR -> Le Poulailler (147)
-  const fr = shortenTeams(await formatCall(formatPrompt('French', sportShort, type, facts)))
-  if (fr && fr.toUpperCase().indexOf('NONE') !== 0) {
-    const idFr = await post(token, FR_CHAT_ID, sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + headSep + fr, RACING_THREAD_FR)
-    if (doPin) await pinMessage(token, FR_CHAT_ID, idFr)
-  } else { console.error('racing[' + command + '] FR vide/NONE') }
-
-  if ((!en || en.toUpperCase().indexOf('NONE') === 0) && (!fr || fr.toUpperCase().indexOf('NONE') === 0)) {
+  if (!enOk && !frOk) {
     await dmOwner(token, '🏁 /' + command + ' : mise en forme impossible (reessaie).')
   }
 }

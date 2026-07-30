@@ -420,15 +420,11 @@ Deno.serve(async (req: Request) => {
       const frBody = fr.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
       const enBody = await translateToEnglish(frBody)
       const en = enBody ? (hookEn + NL + NL + enBody) : fr   // repli EN=FR si trad vide
-      // 1) FR (défaut) -> Le Poulailler, Actu generale (45) — bouton 🇬🇧/🇫🇷
-      await postI18n(botToken, FR_CHAT_ID, FR_THREAD_WORLD, imgUrl, 'fr', en, fr)
+      // The Chicken Coop (World Roost), EN par défaut + bouton 🇬🇧/🇫🇷 (FR pré-enregistré).
+      // Poulailler supprimé : plus d'envoi FR séparé.
+      await postI18n(botToken, chatId, WORLD_THREAD_EN, imgUrl, 'en', en, fr)
       if (kind !== 'wr_night') await logDailyTopic(kind, fr)
-      // 2) EN (défaut) -> The Chicken Coop, World Roost (1489)
-      if (enBody) {
-        await postI18n(botToken, chatId, WORLD_THREAD_EN, imgUrl, 'en', en, fr)
-        // Recap info du soir (21h40) : copie EN + CTA -> owner (pour X).
-        if (kind === 'wr_night') await dmOwnerCopy(botToken, en)
-      } else console.error('daily-world[' + kind + ']: traduction EN vide')
+      if (kind === 'wr_night') await dmOwnerCopy(botToken, en)   // recap 21h40 -> owner (pour X)
       await markSent(KIND_JOB[kind] || ('world-' + kind))
       console.log('daily-world[' + kind + '] poste:', result.frText.slice(0, 80))
     } catch (e) { console.error('daily-world[' + kind + '] bg exception:', String(e)) }

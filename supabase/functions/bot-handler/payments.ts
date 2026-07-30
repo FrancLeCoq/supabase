@@ -57,7 +57,7 @@ export async function sendCashbackOffer(token: string, chatId: number, isFR: boo
   const txt = isFR
     ? `🔓 <b>Débloque tout l'univers Francis — 100⭐</b>\n\n` +
       `Paye une fois avec des Telegram Stars et accède à vie à tout :\n` +
-      `• Écrire dans Le Poulailler\n• Tous les bonus de jeu\n• Modes Holders\n\n` +
+      `• Écrire dans The Chicken Coop\n• Tous les bonus de jeu\n• Modes Holders\n\n` +
       `🎁 En retour, tu reçois <b>50⭐ d'équivalent $FRANC</b> en cashback.\n` +
       `Après le paiement, le bot te demandera ton adresse pour t'envoyer le cashback (ou tape <code>/cashback TON_ADRESSE</code>).`
     : `🔓 <b>Unlock the whole Francis universe — 100⭐</b>\n\n` +

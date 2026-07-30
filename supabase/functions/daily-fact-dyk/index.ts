@@ -266,9 +266,8 @@ Deno.serve(async (req: Request) => {
       const img = imageUrl()
       const fr = await translateToFrench(en)
       const frText = fr || en
-      await postI18n(botToken, chatId, img, 'en', en, frText)            // EN (défaut) -> The Chicken Coop, General
-      if (fr) await postI18n(botToken, FR_CHAT_ID, img, 'fr', en, frText) // FR (défaut) -> Le Poulailler, General
-      else console.error('daily-fact-dyk: traduction FR vide')
+      await postI18n(botToken, chatId, img, 'en', en, frText)            // EN (défaut) -> The Chicken Coop, General (bouton 🇬🇧/🇫🇷)
+      // Poulailler supprimé : plus d'envoi FR séparé (FR via le bouton du Coop).
       await dmOwnerCopy(botToken, en)          // copie EN -> owner (pour X, sans lien)
       await markSent('franc-did-you-know-1')
       console.log('daily-fact-dyk poste:', result.text.slice(0, 80))

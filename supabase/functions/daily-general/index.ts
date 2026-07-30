@@ -186,12 +186,10 @@ Deno.serve(async (req: Request) => {
       const en = await generate(promptFor('English'))
       const fr = await generate(promptFor('French'))
       const enText = en || fr, frText = fr || en
-      // EN (défaut) -> The Chicken Coop (General)
-      if (en) await postI18n(botToken, enChatId, 'en', enText, frText)
-      else console.error('daily-general[' + kind + '] EN vide')
-      // FR (défaut) -> Le Poulailler (General)
-      if (fr) await postI18n(botToken, FR_CHAT_ID, 'fr', enText, frText)
-      else console.error('daily-general[' + kind + '] FR vide')
+      // EN (défaut) -> The Chicken Coop (General), bouton 🇬🇧/🇫🇷 pré-enregistré.
+      // Poulailler supprimé : plus d'envoi FR séparé (FR via le bouton du Coop).
+      if (enText) await postI18n(botToken, enChatId, 'en', enText, frText)
+      else console.error('daily-general[' + kind + '] EN/FR vides')
       await markSent(kind === 'gn' ? 'franc-gn' : 'franc-gm-joke')
       console.log('daily-general[' + kind + '] poste')
     } catch (e) { console.error('daily-general[' + kind + '] bg exception', String(e)) }

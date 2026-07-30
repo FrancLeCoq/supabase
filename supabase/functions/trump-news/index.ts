@@ -257,10 +257,9 @@ Deno.serve(async (req: Request) => {
     if (!p) return new Response(JSON.stringify({ error: 'aucun post original trouvé' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     const media = await fetchMedia(p.link)
     const coopOk = await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media)
-    const fr = p.text ? await translateFR(p.text) : ''
-    const poulOk = await postPost(POUL_CHAT, POUL_THREAD, headerFR(p.t), fr || p.text, media)
+    // Poulailler supprimé : plus d'envoi FR.
     await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)   // évite un doublon par le cron
-    return new Response(JSON.stringify({ oid: p.oid, mediaCount: media.length, coopOk, poulOk, text: p.text.slice(0, 150), fr: fr.slice(0, 150) }, null, 2),
+    return new Response(JSON.stringify({ oid: p.oid, mediaCount: media.length, coopOk, text: p.text.slice(0, 150) }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
@@ -273,11 +272,8 @@ Deno.serve(async (req: Request) => {
         const first = await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)
         if (!first) continue
         const media = await fetchMedia(p.link)
-        // EN -> Coop
+        // EN -> The Chicken Coop (Poulailler supprimé : plus d'envoi FR).
         await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media)
-        // FR -> Poulailler
-        const fr = p.text ? await translateFR(p.text) : ''
-        await postPost(POUL_CHAT, POUL_THREAD, headerFR(p.t), fr || p.text, media)
         console.log('trump-news poste', p.oid, 'media', media.length, p.text.slice(0, 60))
       }
     } catch (e) { console.error('trump-news bg ex:', String(e)) }

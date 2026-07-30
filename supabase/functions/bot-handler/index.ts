@@ -31,23 +31,21 @@ import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang
 // ══════════════════════════════════════════════════════════════
 function spicyWelcomeText(isFR: boolean): string {
   return isFR
-    ? `🔞 <b>Bienvenue dans l'espace Spicy du Poulailler (« Golden Rooster »).</b>\n\nL'accès est <b>gratuit</b>, mais réservé aux <b>membres de The Chicken Coop 🇬🇧 (ou du Poulailler 🇫🇷)</b> et aux personnes <b>majeures (18+)</b>.\n\n1️⃣ Rejoins un des deux groupes\n2️⃣ Certifie tes 18 ans → tu reçois ton lien 🔥\n\n⚠️ <b>Reste membre</b> de l'un des deux groupes : le bot vérifie chaque jour et retire l'accès à ceux qui les ont quittés.`
-    : `🔞 <b>Welcome to the Poulailler's Spicy space ("Golden Rooster").</b>\n\nAccess is <b>free</b>, but reserved for <b>members of The Chicken Coop 🇬🇧 (or Le Poulailler 🇫🇷)</b> and <b>adults (18+)</b> only.\n\n1️⃣ Join one of the two groups\n2️⃣ Certify you're 18+ → you get your link 🔥\n\n⚠️ <b>Stay a member</b> of one of the two groups: the bot checks daily and removes access from anyone who leaves them.`
+    ? `🔞 <b>Bienvenue dans l'espace Spicy (« Golden Rooster »).</b>\n\nL'accès est <b>gratuit</b>, mais réservé aux <b>membres de The Chicken Coop 🇬🇧🇫🇷</b> (le groupe bilingue de Francis) et aux personnes <b>majeures (18+)</b>.\n\n1️⃣ Rejoins The Chicken Coop\n2️⃣ Certifie tes 18 ans → tu reçois ton lien 🔥\n\n⚠️ <b>Reste membre</b> de The Chicken Coop : le bot vérifie chaque jour et retire l'accès à ceux qui l'ont quitté.`
+    : `🔞 <b>Welcome to the Spicy space ("Golden Rooster").</b>\n\nAccess is <b>free</b>, but reserved for <b>members of The Chicken Coop 🇬🇧🇫🇷</b> (Francis' bilingual group) and <b>adults (18+)</b> only.\n\n1️⃣ Join The Chicken Coop\n2️⃣ Certify you're 18+ → you get your link 🔥\n\n⚠️ <b>Stay a member</b> of The Chicken Coop: the bot checks daily and removes access from anyone who leaves it.`
 }
 function spicyWelcomeKeyboard(isFR: boolean) {
   return { inline_keyboard: [
-    [{ text: '🐓 The Chicken Coop 🇬🇧', url: CHICKEN_COOP_URL }, { text: '🐓 Le Poulailler 🇫🇷', url: POULAILLER_URL }],
+    [{ text: '🇬🇧 The Chicken Coop 🇫🇷', url: CHICKEN_COOP_URL }],
     [{ text: isFR ? '🔞 Je certifie avoir 18 ans' : "🔞 I certify I'm 18+", callback_data: 'spicy_18' }],
   ] }
 }
-// Membre de Coop OU Poulailler ? (getChatMemberStatus renvoie 'member' en cas
+// Membre de The Chicken Coop ? (getChatMemberStatus renvoie 'member' en cas
 // d'échec réseau → fail-open : on n'empêche pas l'accès sur une erreur ponctuelle.)
 async function isCoopMember(token: string, userId: number): Promise<boolean> {
   const ok = (s: string) => s === 'member' || s === 'administrator' || s === 'creator' || s === 'restricted'
   const coop = await getChatMemberStatus(token, CHICKEN_COOP, userId)
-  if (ok(coop)) return true
-  const poul = await getChatMemberStatus(token, POULAILLER_FR, userId)
-  return ok(poul)
+  return ok(coop)
 }
 async function sendSpicyInvite(token: string, userId: number, isFR: boolean): Promise<void> {
   const invite = await createOneTimeInvite(token, HOLDERS_GROUP_ID)
@@ -85,18 +83,17 @@ function isGreeting(raw: string): boolean {
   return /^(gm+|g\s?m|good\s?morning|good\s?evening|hi+|hii+|hey+|hello+|helo+|yo+|hola|wagmi|salut|slt|bonjour|bjr|coucou|cc|bonsoir|bsr)\b/.test(t)
 }
 
-// Golden Rooster — NON membre d'un des deux groupes requis.
+// Golden Rooster — NON membre de The Chicken Coop.
 function grWelcomeNotMember(m: string) {
   return {
     text:
       `🤩 <b>Bienvenue ${m} dans Golden Rooster !</b> 🐓\n\n` +
       `Préparez-vous à découvrir un espace rempli de contenu exclusif 🔞.\n\n` +
-      `🔓 Pour conserver votre accès à <b>Golden Rooster</b>, pensez à rejoindre <b>The Chicken Coop</b> 🇬🇧 ou <b>Le Poulailler</b> 🇫🇷. Notre bot vérifie automatiquement votre adhésion.\n\n` +
-      `🇺🇸 The Chicken Coop\n👉 t.me/LeCoqFrancis\n\n` +
-      `🇫🇷 Le Poulailler\n👉 t.me/FrancisLeCoq\n\n` +
+      `🔓 Pour conserver votre accès à <b>Golden Rooster</b>, pensez à rejoindre <b>The Chicken Coop</b> 🇬🇧🇫🇷 (le groupe bilingue de Francis). Notre bot vérifie automatiquement votre adhésion.\n\n` +
+      `🇬🇧 The Chicken Coop 🇫🇷\n👉 t.me/LeCoqFrancis\n\n` +
       `Amusez-vous bien et bienvenue dans l'univers de <b>Francis Le Coq</b> ! 🔥🐓`,
     reply_markup: { inline_keyboard: [
-      [ { text: '🇬🇧 The Chicken Coop', url: CHICKEN_COOP_URL }, { text: '🇫🇷 Le Poulailler', url: POULAILLER_URL } ],
+      [ { text: '🇬🇧 The Chicken Coop 🇫🇷', url: CHICKEN_COOP_URL } ],
       [ ALL_GAMES_BTN ],
     ] },
   }
@@ -137,10 +134,10 @@ function coopWelcome(m: string) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  SETUP bilingue : poste EN (défaut) dans The Chicken Coop et FR (défaut)
-//  dans Le Poulailler, chacun avec ses boutons de contenu + une ligne 🇬🇧/🇫🇷.
-//  Les DEUX versions (texte + clavier) sont mémorisées dans setup_i18n pour
-//  la bascule instantanée (callback slang), et gardées jusqu'au prochain /setup.
+//  SETUP : poste dans The Chicken Coop (EN par défaut) avec ses boutons de
+//  contenu + une ligne 🇬🇧/🇫🇷. Les DEUX versions (texte + clavier) sont
+//  mémorisées dans setup_i18n pour la bascule instantanée (callback slang),
+//  gardées jusqu'au prochain /setup. (Poulailler supprimé.)
 // ══════════════════════════════════════════════════════════════
 const SLANG_ROW = [
   { text: '🇬🇧 EN', callback_data: 'slang:en' },
@@ -157,16 +154,12 @@ async function postSetupBilingual(
   const sentEn = await sendMessage(token, CHICKEN_COOP, enText, enExtra)
   if (sentEn?.message_id) {
     await pinMessage(token, CHICKEN_COOP, sentEn.message_id)
-    try { await supabase.from('setup_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sentEn.message_id, en_text: enText, fr_text: frText, en_kb: enKb, fr_kb: frKb, updated_at: new Date().toISOString() }) } catch (e) { console.error('setup_i18n EN', String(e)) }
+    // On mémorise les DEUX langues → le bouton 🇬🇧/🇫🇷 bascule sur place.
+    try { await supabase.from('setup_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sentEn.message_id, en_text: enText, fr_text: frText, en_kb: enKb, fr_kb: frKb, updated_at: new Date().toISOString() }) } catch (e) { console.error('setup_i18n', String(e)) }
   }
-  // FR (défaut) -> Le Poulailler
-  const frExtra: Record<string, any> = { reply_markup: { inline_keyboard: [...frKb, SLANG_ROW] } }
-  if (frThread && frThread > 1) frExtra.message_thread_id = frThread
-  const sentFr = await sendMessage(token, POULAILLER_FR, frText, frExtra)
-  if (sentFr?.message_id) {
-    await pinMessage(token, POULAILLER_FR, sentFr.message_id)
-    try { await supabase.from('setup_i18n').upsert({ chat_id: POULAILLER_FR, message_id: sentFr.message_id, en_text: enText, fr_text: frText, en_kb: enKb, fr_kb: frKb, updated_at: new Date().toISOString() }) } catch (e) { console.error('setup_i18n FR', String(e)) }
-  }
+  // Poulailler supprimé : plus d'envoi FR séparé (la version FR reste dans le
+  // Chicken Coop via le bouton 🇬🇧/🇫🇷). frThread conservé pour compat de signature.
+  void frThread
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -293,9 +286,12 @@ Deno.serve(async (req) => {
             // left / kicked / banned
             await supabase.from('group_members').update({ status: 'kicked' }).eq('telegram_id', u.id)
           }
+        } else if (chatIdCm === CHICKEN_COOP && isInNow && !wasIn) {
+          // The Chicken Coop : on marque le NOUVEL arrivant comme « à accueillir ».
+          // L'accueil se déclenchera à son 1er GM/hi (voir handler plus bas). Les
+          // membres déjà en place ne sont jamais marqués → aucun accueil pour eux.
+          try { await supabase.from('welcome_pending').upsert({ chat_id: CHICKEN_COOP, user_id: u.id }) } catch (_) { /* ok */ }
         }
-        // The Chicken Coop / Le Poulailler : PLUS d'accueil à l'arrivée — il se
-        // déclenche désormais sur le 1er GM/hi du nouvel arrivant (voir plus bas).
       }
       return new Response('ok')
     }
@@ -583,14 +579,12 @@ Deno.serve(async (req) => {
         if (!m) { await sendMessage(cbToken, cbUser.id, '⚠️ Catégorie inconnue, publication annulée.'); await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id); return new Response('ok') }
         const enMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.en}`
         const frMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.fr}`
-        // Même mécanique que les news auto : bouton 🇬🇧/🇫🇷 pré-enregistré (bascule
-        // instantanée via news_i18n, sans appel Gemini). html:true car balises <b>.
+        // The Chicken Coop uniquement (Poulailler supprimé) : EN par défaut +
+        // bouton 🇬🇧/🇫🇷 pré-enregistré (bascule instantanée, sans Gemini). html:true (balises <b>).
         const sentEn = await sendMessage(cbToken, CHICKEN_COOP, enMsg, { message_thread_id: m.en, reply_markup: NLANG_BTN })
-        const sentFr = await sendMessage(cbToken, POULAILLER_FR, frMsg, { message_thread_id: m.fr, reply_markup: NLANG_BTN })
         if (sentEn?.message_id) await cbSupa.from('news_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sentEn.message_id, en: enMsg, fr: frMsg, html: true })
-        if (sentFr?.message_id) await cbSupa.from('news_i18n').upsert({ chat_id: POULAILLER_FR, message_id: sentFr.message_id, en: enMsg, fr: frMsg, html: true })
         await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id)
-        await sendMessage(cbToken, cbUser.id, '✅ Breaking news publiée dans les deux groupes.')
+        await sendMessage(cbToken, cbUser.id, '✅ Breaking news publiée dans The Chicken Coop.')
         return new Response('ok')
       }
 
@@ -611,8 +605,8 @@ Deno.serve(async (req) => {
             { reply_markup: { inline_keyboard: [[{ text: isFR ? '🔞 Je certifie avoir 18 ans' : "🔞 I certify I'm 18+", callback_data: 'spicy_18' }]] } })
         } else {
           await sendMessage(cbToken, cbUser.id,
-            isFR ? `❌ Tu n'es pas encore membre de The Chicken Coop ni du Poulailler. Rejoins l'un des deux, puis reclique sur ✅.`
-                 : `❌ You're not a member of The Chicken Coop or Le Poulailler yet. Join one of them, then tap ✅ again.`,
+            isFR ? `❌ Tu n'es pas encore membre de The Chicken Coop. Rejoins-le, puis reclique sur ✅.`
+                 : `❌ You're not a member of The Chicken Coop yet. Join it, then tap ✅ again.`,
             { reply_markup: spicyWelcomeKeyboard(isFR) })
         }
       }
@@ -624,8 +618,8 @@ Deno.serve(async (req) => {
           await sendSpicyInvite(cbToken, cbUser.id, isFR)
         } else {
           await sendMessage(cbToken, cbUser.id,
-            isFR ? `❌ Tu dois d'abord être membre de The Chicken Coop 🇬🇧 ou du Poulailler 🇫🇷. Rejoins, puis reclique.`
-                 : `❌ You must first be a member of The Chicken Coop 🇬🇧 or Le Poulailler 🇫🇷. Join, then tap again.`,
+            isFR ? `❌ Tu dois d'abord être membre de The Chicken Coop 🇬🇧🇫🇷. Rejoins, puis reclique.`
+                 : `❌ You must first be a member of The Chicken Coop 🇬🇧🇫🇷. Join, then tap again.`,
             { reply_markup: spicyWelcomeKeyboard(isFR) })
         }
       }
@@ -963,7 +957,7 @@ Deno.serve(async (req) => {
         `/setup — Menu principal\n/setupwallet — Topic Wallet\n/setupgames — Topic Games\n` +
         `/setupchickencoop — The Chicken Coop (General)\n/setuphotwings — Topic Hot Wings\n` +
         `/setupcryptocoop — Topic Crypto Coop\n/setupworldroost — Topic World Roost\n/setuptrump — Topic Trump News\n\n` +
-        `<b>2️⃣ Racing</b> (EN Coop + FR Poulailler)\n` +
+        `<b>2️⃣ Racing</b> (The Chicken Coop, EN + bouton 🇫🇷)\n` +
         `/F1essais · /GPessais — Essais libres\n/F1qualifs · /GPqualifs — Qualifications\n` +
         `/F1qualifssprint · /GPqualifssprint — Qualifs sprint\n/F1sprint · /GPsprint — Course sprint\n` +
         `/F1course · /GPcourse — Course (GP)\n/F1we · /GPwe — Programme du week-end\n/F1news · /GPnews — Potins paddock\n\n` +
@@ -993,7 +987,7 @@ Deno.serve(async (req) => {
       if (userId !== OWNER_ID) return new Response('ok')
       await sendMessage(token, chatId,
         `🕒 <b>Programme journalier d'envoi</b>\n<i>(heure de Paris)</i>\n\n` +
-        `<b>1️⃣ The Chicken Coop 🇬🇧 &amp; Le Poulailler 🇫🇷</b>\n` +
+        `<b>1️⃣ The Chicken Coop 🇬🇧🇫🇷</b> (bilingue)\n` +
         `07h00 — 🌍 World Roost · Matin\n` +
         `07h55 — ⏰ Crypto Morning\n` +
         `08h50 — 😄 Blague du matin\n` +
@@ -1299,14 +1293,14 @@ Deno.serve(async (req) => {
       console.log(`group msg: userId=${userId} status=${status}`)
       if (status === 'administrator' || status === 'creator') return new Response('ok')
 
-      // ── Accueil déclenché par un GM/hi (UNE seule fois par personne & groupe) ──
-      // Remplace l'accueil à l'arrivée (qui pouvait se répéter). Répond au message
-      // avec un mot de bienvenue + le bouton vers le bot.
+      // ── Accueil déclenché par le 1er GM/hi d'un NOUVEL arrivant ──
+      // On n'accueille QUE les personnes marquées « à accueillir » à leur arrivée
+      // (table welcome_pending) → les membres déjà en place ne reçoivent rien.
       if (isGreeting(rawText)) {
-        const { data: seen } = await supabase.from('group_welcomed').select('user_id').eq('chat_id', chatId).eq('user_id', msg.from.id).maybeSingle()
-        if (!seen) {
-          try { await supabase.from('group_welcomed').upsert({ chat_id: chatId, user_id: msg.from.id }) } catch (_) { /* ok */ }
-          const w = (chatId === POULAILLER_FR) ? poulWelcome(userMention(msg.from)) : coopWelcome(userMention(msg.from))
+        const { data: pendingW } = await supabase.from('welcome_pending').select('user_id').eq('chat_id', chatId).eq('user_id', msg.from.id).maybeSingle()
+        if (pendingW) {
+          try { await supabase.from('welcome_pending').delete().eq('chat_id', chatId).eq('user_id', msg.from.id) } catch (_) { /* ok */ }
+          const w = coopWelcome(userMention(msg.from))
           await sendMessage(token, chatId, w.text, { reply_markup: w.reply_markup, reply_to_message_id: messageId })
           return new Response('ok')
         }
@@ -1518,15 +1512,15 @@ Deno.serve(async (req) => {
         `💲 Hold just 1 $FRANC to unlock everything — it costs less than a cent!\n` +
         `💲 Not a holder yet? Unlock everything with ⭐ Stars and get $FRANC cashback!\n\n` +
         `Have fun, be kind, and enjoy the coop! 🐔\n` +
-        `🌐 Group language: 🇬🇧`,
+        `🌐 Bilingual group: 🇬🇧🇫🇷 — write in English or French!`,
         [
           [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }, { text: '🔗 Wallet', url: WALLET_URL }],
           [{ text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }, { text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }]
         ]
       ,
-        `🐓 <b>Bienvenue au Poulailler !</b>\n\n` +
-        `La maison officielle de <b>$FRANC by Francis le coq</b> — un memecoin communautaire avec tout un univers de jeux. 🎮\n\n` +
+        `🐓 <b>Bienvenue dans The Chicken Coop !</b>\n\n` +
+        `La maison officielle de <b>$FRANC by Francis le coq</b> — un memecoin communautaire bilingue 🇬🇧🇫🇷 avec tout un univers de jeux. 🎮\n\n` +
         `Repère-toi facilement :\n` +
         `💰 <b>Crypto Cocorico</b> — l'actu crypto en continu, décryptée\n` +
         `📰 <b>Le Chant du Monde</b> — les grandes actus internationales, chaque jour\n` +
@@ -1538,8 +1532,8 @@ Deno.serve(async (req) => {
         `👉 <b>Tout est gratuit — il suffit d'être holder !</b>\n` +
         `💲 Détiens seulement 1 $FRANC pour tout débloquer — moins d'un centime !\n` +
         `💲 Pas encore holder ? Débloque tout avec des ⭐ Stars et reçois du cashback $FRANC !\n\n` +
-        `Amuse-toi, sois sympa, et profite du poulailler ! 🐔\n` +
-        `🌐 Langue du groupe : 🇫🇷`,
+        `Amuse-toi, sois sympa, et profite du groupe ! 🐔\n` +
+        `🌐 Groupe bilingue : 🇬🇧🇫🇷 — écris en français ou en anglais !`,
         [
           [{ text: '🐔 Tous les jeux & univers Francis', url: MENU_DEEPLINK }],
           [{ text: '📜 Règles des jeux', url: RULES_DEEPLINK }, { text: '🔗 Wallet', url: WALLET_URL }],
@@ -1895,23 +1889,15 @@ Deno.serve(async (req) => {
       return new Response('ok')
     }
 
-    if (btnIs(text, 'coop')) {
+    // The Chicken Coop = le groupe bilingue UNIQUE (le Poulailler a été supprimé).
+    // On garde le handler 'poulailler' pour rattraper les anciens boutons en cache
+    // et rediriger tout le monde vers The Chicken Coop.
+    if (btnIs(text, 'coop') || btnIs(text, 'poulailler')) {
       await sendMessage(token, chatId,
-        tr(`🐓 <b>The Chicken Coop 🗺️</b>\nLe groupe international (anglophone) de la communauté $FRANC !`,
-           `🐓 <b>The Chicken Coop 🗺️</b>\nOur international (English-speaking) $FRANC community!`),
+        tr(`🐓 <b>The Chicken Coop 🇬🇧🇫🇷</b>\nLe groupe bilingue de la communauté $FRANC — tout le monde est le bienvenu !`,
+           `🐓 <b>The Chicken Coop 🇬🇧🇫🇷</b>\nThe bilingual $FRANC community group — everyone's welcome!`),
         { reply_markup: { inline_keyboard: [
-          [{ text: tr('🐓 Rejoindre The Chicken Coop','🐓 Join The Chicken Coop'), url: CHICKEN_COOP_URL }]
-        ]}}
-      )
-      return new Response('ok')
-    }
-
-    if (btnIs(text, 'poulailler')) {
-      await sendMessage(token, chatId,
-        tr(`🐓 <b>Le Poulailler 🇫🇷</b>\nLe groupe francophone de la communauté $FRANC — bienvenue chez les Français !`,
-           `🐓 <b>Le Poulailler 🇫🇷</b>\nThe French-speaking $FRANC community group!`),
-        { reply_markup: { inline_keyboard: [
-          [{ text: tr('🐓 Rejoindre Le Poulailler','🐓 Join Le Poulailler'), url: POULAILLER_URL }]
+          [{ text: '🇬🇧 The Chicken Coop 🇫🇷', url: CHICKEN_COOP_URL }]
         ]}}
       )
       return new Response('ok')

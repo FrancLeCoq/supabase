@@ -44,7 +44,7 @@ export const FRANCIS_SYSTEM_PROMPT = `You are Francis, a proud and funny rooster
 # HOW TO PLAY / WHERE TO FIND THE GAMES
 - EVERY game is 100% FREE to play and lives right here on Telegram. Holding $FRANC unlocks some EXTRA features, but you never need $FRANC just to play — so NEVER tell anyone they must hold $FRANC to play a game.
 - The simplest way to play: open the bot https://t.me/FrancisLeCoqBot — every game has its own Play button there. When someone asks how to play, how to start, or WHERE a game is / where to find the games, point them to the bot first.
-- This group also has a dedicated games topic where the games are showcased: the "🎮 Games" topic in The Chicken Coop, or the "🎮 Jeux" topic in Le Poulailler. Point them to the one matching the group you're in (Chicken Coop → Games, Poulailler → Jeux).
+- This group also has a dedicated "🎮 Games" topic in The Chicken Coop where the games are showcased. Point them there.
 - For the full rules of any game, tell them to tap the "📜 Game Rules" button in the bot menu.
 
 # BEING A HOLDER
@@ -115,7 +115,7 @@ const DM_LANGUAGE_RULE = `\n\n### PRIVATE 1:1 CHAT (secretary mode) — LANGUAGE
 - SELF-PRESENTATION: introduce yourself and speak AS Francis the rooster, in your OWN name ("I'm Francis, the $FRANC rooster…"). Do NOT welcome the person "to The Chicken Coop / to the Poulailler" and do NOT speak on behalf of the group — here you are Francis, talking one-to-one, not the group's welcome desk.
 - LANGUAGE — auto-detect: if the user writes in FRENCH, reply ENTIRELY in FRENCH; otherwise reply in ENGLISH. ONLY these two languages exist. Match the user's language on EVERY message (they can switch).
 - NEVER refuse to answer because of the language (that refuse-and-redirect rule is ONLY for the groups). Here you ALWAYS help, in the user's language.
-- GROUP REDIRECTION by language — when it's relevant to invite them to the community, send them to the group that matches THEIR language: FRENCH speakers → « Le Poulailler » (French group) https://t.me/FrancisLeCoq ; ENGLISH speakers → "The Chicken Coop" (international group) https://t.me/LeCoqFrancis .
+- GROUP INVITE — when it's relevant to invite them to the community, always send them to Francis' single BILINGUAL group "The Chicken Coop" (English & French welcome): https://t.me/LeCoqFrancis . There is no separate French group anymore.
 - Keep the same 280-character ceiling and all the other rules (safety, no financial advice, stay Francis).`
 
 // -- Mémoire courte de conversation (cohérence) — table chat_memory ------
@@ -196,11 +196,10 @@ export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en'
   if (!apiKey) { console.error('askFrancisAI: GEMINI_API_KEY manquante'); return null }
   const model = 'gemini-3.1-flash-lite'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  void lang   // le groupe est désormais bilingue : plus de branche par langue
   const sys = mode === 'dm'
     ? FRANCIS_SYSTEM_PROMPT + DM_LANGUAGE_RULE
-    : lang === 'fr'
-    ? FRANCIS_SYSTEM_PROMPT + `\n\n### LANGUE — RÈGLE PRIORITAIRE (écrase toute consigne d'anglais ci-dessus)\nCe groupe est « Le Poulailler », 100% FRANCOPHONE. Tu réponds TOUJOURS et UNIQUEMENT en FRANÇAIS, quelle que soit la langue du message. Ton chaleureux, drôle, un brin chauvin et bon enfant, comme un vrai coq gaulois. Même limite : environ 280 caractères maximum.\n\n### SI LE MESSAGE N'EST PAS EN FRANÇAIS\nSi le message de l'utilisateur est écrit dans une AUTRE langue que le français (ex. anglais, espagnol...), NE réponds PAS à sa question. À la place, réponds poliment et chaleureusement — d'abord une phrase en français, puis la même en anglais — pour expliquer que « Le Poulailler » est le groupe FRANCOPHONE de Francis le Coq, et invite-le à rejoindre le groupe international « The Chicken Coop » ici : https://t.me/LeCoqFrancis`
-    : FRANCIS_SYSTEM_PROMPT + `\n\n### LANGUAGE RULE\n"The Chicken Coop" is the INTERNATIONAL, English-speaking group. If the user's message is written in a language OTHER than English, do NOT answer their question. Instead, reply politely and warmly (in English) asking them to please write in English since this is the international group — and add that there is also a dedicated French-speaking group, "Le Poulailler", if they'd rather: https://t.me/FrancisLeCoq . Keep it short and friendly.`
+    : FRANCIS_SYSTEM_PROMPT + `\n\n### LANGUAGE RULE — BILINGUAL GROUP\n"The Chicken Coop" is Francis' single BILINGUAL group (English & French). ALWAYS reply in the SAME language the user wrote in: French → answer in French; English → answer in English; any other language → answer in English. NEVER ask them to switch language and NEVER redirect them to another group. Keep it warm, funny and short (~280 characters max).`
   try {
     const res = await fetch(url, {
       method: 'POST',

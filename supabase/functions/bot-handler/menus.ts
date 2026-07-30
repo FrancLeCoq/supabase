@@ -262,8 +262,8 @@ export const RULES_MENU_TEXT =
 // Les handlers reconnaissent FR ET EN via btnIs().
 
 export const BTN = {
-  coop:      { fr: '🐓 The Chicken Coop 🗺️',   en: '🐓 The Chicken Coop 🗺️' },  // groupe international
-  poulailler:{ fr: '🐓 Le Poulailler 🇫🇷',      en: '🐓 Le Poulailler 🇫🇷' },      // groupe francophone
+  coop:      { fr: '🇬🇧 The Chicken Coop 🇫🇷',  en: '🇬🇧 The Chicken Coop 🇫🇷' },  // groupe bilingue (unique)
+  poulailler:{ fr: '🐓 Le Poulailler 🇫🇷',      en: '🐓 Le Poulailler 🇫🇷' },      // ⚠️ supprimé — gardé pour reconnaître les anciens clics en cache
   tamagotchi:{ fr: '🐓 Tamagotchi',           en: '🐓 Tamagotchi' },
   mastermind:{ fr: '🎯 Mastermind',           en: '🎯 Mastermind' },
   eggclicker:{ fr: '🥚 EggClicker',           en: '🥚 EggClicker' },
@@ -306,7 +306,7 @@ export function buildKeyboard(isFR: boolean) {
   const L = (k: keyof typeof BTN) => ({ text: isFR ? BTN[k].fr : BTN[k].en })
   return {
     keyboard: [
-      [L('coop'), L('poulailler')],
+      [L('coop')],
       [L('tamagotchi'), L('snake')],
       [L('motus'),      L('mastermind')],
       [L('eggclicker'), L('sudoku')],
@@ -329,7 +329,7 @@ export function buildKeyboard(isFR: boolean) {
 export function buildInlineMenu(isFR: boolean) {
   const L = (k: keyof typeof BTN) => (isFR ? BTN[k].fr : BTN[k].en)
   return { inline_keyboard: [
-    [{ text: L('coop'), url: CHICKEN_COOP_URL }, { text: L('poulailler'), url: POULAILLER_URL }],
+    [{ text: L('coop'), url: CHICKEN_COOP_URL }],
     [{ text: L('tamagotchi'), url: TAMAGOTCHI_URL }, { text: L('snake'), url: SNAKE_URL }],
     [{ text: L('motus'), url: MOTUS_URL }, { text: L('mastermind'), url: MASTERMIND_URL }],
     [{ text: L('eggclicker'), url: EGGCLICKER_URL }, { text: L('sudoku'), url: SUDOKU_URL }],

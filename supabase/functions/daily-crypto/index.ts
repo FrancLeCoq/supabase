@@ -603,9 +603,8 @@ Deno.serve(async (req: Request) => {
       if (kind !== 'night') await logDailyTopic(kind, (result as any).logText || en)
       // Copie EN -> owner (pour X) pour le Crypto Evening (18h55) ET le Crypto Night (20h45).
       if (kind === 'evening' || kind === 'night') await dmOwnerCopy(botToken, en)
-      // 2) FR (défaut) -> Le Poulailler, Crypto Cocorico (43)
-      if (fr) await postI18n(botToken, FR_CHAT_ID, FR_THREAD_CRYPTO, imgUrl, 'fr', en, frText)
-      else console.error('daily-crypto[' + kind + ']: traduction FR vide')
+      // Poulailler supprimé : plus d'envoi FR séparé. La version FR reste
+      // accessible via le bouton 🇬🇧/🇫🇷 dans The Chicken Coop.
       await markSent(KIND_JOB[kind] || ('crypto-' + kind))
       console.log('daily-crypto[' + kind + '] posté:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-crypto[' + kind + '] bg exception:', String(e)) }

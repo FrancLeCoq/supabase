@@ -401,9 +401,8 @@ Deno.serve(async (req: Request) => {
       const img = imageUrl(kind)
       const fr = await translateToFrench(en)
       const frText = fr || en
-      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, img, 'en', en, frText)     // EN (défaut) -> Crypto Coop
-      if (fr) await postI18n(botToken, FR_CHAT_ID, FR_THREAD_CRYPTO, img, 'fr', en, frText)   // FR (défaut) -> Crypto Cocorico
-      else console.error('daily-pump: traduction FR vide')
+      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, img, 'en', en, frText)     // EN (défaut) -> Crypto Coop (bouton 🇬🇧/🇫🇷)
+      // Poulailler supprimé : plus d'envoi FR séparé (FR via le bouton du Coop).
       await dmOwnerCopy(botToken, en)   // copie EN -> owner (pour X, sans lien)
       await markSent(slot)
       console.log('daily-pump poste:', result.text.slice(0, 80))
