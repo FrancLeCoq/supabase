@@ -917,7 +917,7 @@ Deno.serve(async (req) => {
         `15h15 — 🌶️ Hot News · Midi\n` +
         `19h50 — 🌶️ Hot News · Soir\n` +
         `🖼️ Feed images : chaque heure (via le NAS)\n` +
-        `🔒 Vérif adhésion : rappel 06:00 UTC · expulsion 09:00 UTC\n\n` +
+        `🔒 Vérif adhésion : rappel 08h00 · expulsion 10h00\n\n` +
         `<b>ℹ️ Interne (toi seul)</b>\n` +
         `22h40 — 📊 Rapport quotidien\n` +
         `23h00 — 🧹 Nettoyage mémoire`)

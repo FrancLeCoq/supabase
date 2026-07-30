@@ -9,12 +9,12 @@
 //   on ne peut pas prévenir chacun en DM → on prévient dans le groupe).
 //
 //  PASSAGES (pg_cron, corps {"mode":"..."}) :
-//    • mode "remind"  — 06:00 UTC : marque les non-conformes (échéance =
-//        aujourd'hui + GRACE_DAYS à 9h UTC) et poste UN rappel public dans
-//        le #General de « Golden Rooster ». Message par DÉFAUT en ANGLAIS,
-//        bouton 🇬🇧/🇫🇷 pour basculer vers la version française (rendu natif,
-//        pas de traduction IA). N'EXPULSE PERSONNE.
-//    • mode "enforce" — 09:00 UTC : expulse les échéances dépassées + rapport
+//    • mode "remind"  — 08:00 Paris : marque les non-conformes (échéance =
+//        aujourd'hui + GRACE_DAYS) et poste UN rappel public dans le #General
+//        de « Golden Rooster ». Message par DÉFAUT en ANGLAIS, bouton 🇬🇧/🇫🇷
+//        pour basculer vers la version française (rendu natif, pas de
+//        traduction IA). N'EXPULSE PERSONNE.
+//    • mode "enforce" — 10:00 Paris : expulse les échéances dépassées + rapport
 //        owner (avec « prévision d'expulsion demain »). Mode par défaut.
 //    • mode "render"  — sans effet de bord : renvoie {text} du rappel dans la
 //        langue demandée (utilisé par le bouton 🇬🇧/🇫🇷 de bot-handler).
@@ -37,11 +37,13 @@ const OWNER_ID = '6593812300'
 const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇺🇸
 const POUL_URL = 't.me/FrancisLeCoq'         // Le Poulailler 🇫🇷
 
-// Sursis (jours) avant expulsion. L'échéance tombe à 9h UTC (= 9:00 AM UTC).
+// Sursis (jours) avant expulsion. L'expulsion a lieu à 10h (heure de Paris).
+// Seule la DATE d'échéance est comparée (l'heure exacte de passage varie avec
+// l'heure d'été/hiver), donc le sursis reste cohérent toute l'année.
 const GRACE_DAYS = 2
 
-// Heure d'expulsion, écrite selon la langue (9h UTC en FR, 9:00 AM en EN).
-const TIME_STR = { en: '9:00 AM UTC', fr: '9:00 UTC' }
+// Heure d'expulsion affichée, selon la langue (10h, heure de Paris).
+const TIME_STR = { en: '10:00 AM (Paris)', fr: '10h00 (heure de Paris)' }
 
 // Clavier sous le rappel : ligne 1 = bascule langue 🇬🇧/🇫🇷 (rendu natif, géré
 // par bot-handler via grtr:en / grtr:fr) ; ligne 2 = accès direct aux deux
@@ -260,6 +262,7 @@ async function runEnforce(token: string, supabase: any): Promise<Response> {
   const forecast: any[] = []
   const now = new Date()
   const nowIso = now.toISOString()
+  const todayYmd = ymd(now)
   const tomorrowYmd = ymd(new Date(now.getTime() + 86400000))
 
   for (const m of members ?? []) {
@@ -286,7 +289,9 @@ async function runEnforce(token: string, supabase: any): Promise<Response> {
       if (g.slice(0, 10) === tomorrowYmd) forecast.push(m)
       continue
     }
-    if (new Date(g).getTime() > now.getTime()) {
+    // Décision par DATE (pas par heure exacte) : l'expulsion passe à 10h Paris,
+    // dont l'heure UTC varie été/hiver — on compare donc les jours civils.
+    if (g.slice(0, 10) > todayYmd) {
       pending++
       if (g.slice(0, 10) === tomorrowYmd) forecast.push(m)
       await supabase.from('group_members').update({ last_checked: nowIso }).eq('telegram_id', uid)
