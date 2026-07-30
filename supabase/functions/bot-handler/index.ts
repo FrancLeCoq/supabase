@@ -89,7 +89,7 @@ function grWelcomeNotMember(m: string) {
       `🇫🇷 Le Poulailler\n👉 t.me/FrancisLeCoq\n\n` +
       `Amusez-vous bien et bienvenue dans l'univers de <b>Francis Le Coq</b> ! 🔥🐓`,
     reply_markup: { inline_keyboard: [
-      [ { text: '🇺🇸 The Chicken Coop', url: CHICKEN_COOP_URL }, { text: '🇫🇷 Le Poulailler', url: POULAILLER_URL } ],
+      [ { text: '🇬🇧 The Chicken Coop', url: CHICKEN_COOP_URL }, { text: '🇫🇷 Le Poulailler', url: POULAILLER_URL } ],
       [ ALL_GAMES_BTN ],
     ] },
   }
