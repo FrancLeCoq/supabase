@@ -300,6 +300,36 @@ async function sendWithBanner(token: string, chatId: number, text: string, threa
   if (!ok) await postToGroup(token, chatId, text, threadId)
 }
 
+// ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
+const NLANG_BTN = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
+]] }
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !messageId) return
+  try {
+    await tfetch(url + '/rest/v1/news_i18n', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+    })
+  } catch (e) { console.error('storeI18n', String(e)) }
+}
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+  const text = (defaultLang === 'fr') ? fr : en
+  const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  if (threadId) base.message_thread_id = threadId
+  let messageId = 0
+  if (imgUrl) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, photo: imgUrl, caption: text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n photo', String(e)) }
+  }
+  if (!messageId) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
+  }
+  await storeI18n(chatId, messageId, en, fr)
+}
+
 // Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
 async function markSent(jobKey: string): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL')
@@ -367,11 +397,14 @@ Deno.serve(async (req: Request) => {
     try {
       const result = await generateMove(kind)
       if (!result.ok) { console.error('daily-pump echec:', result.reason); return }
-      await sendWithBanner(botToken, chatId, result.text, CRYPTO_THREAD_EN, kind)     // EN -> Crypto Coop
-      const fr = await translateToFrench(result.text)
-      if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr, FR_THREAD_CRYPTO, kind)   // FR -> Crypto Cocorico
+      const en = result.text
+      const img = imageUrl(kind)
+      const fr = await translateToFrench(en)
+      const frText = fr || en
+      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, img, 'en', en, frText)     // EN (défaut) -> Crypto Coop
+      if (fr) await postI18n(botToken, FR_CHAT_ID, FR_THREAD_CRYPTO, img, 'fr', en, frText)   // FR (défaut) -> Crypto Cocorico
       else console.error('daily-pump: traduction FR vide')
-      await dmOwnerCopy(botToken, result.text)   // copie EN -> owner (pour X, sans lien)
+      await dmOwnerCopy(botToken, en)   // copie EN -> owner (pour X, sans lien)
       await markSent(slot)
       console.log('daily-pump poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-pump bg exception:', String(e)) }

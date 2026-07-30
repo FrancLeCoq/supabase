@@ -522,6 +522,38 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
   }
 }
 
+// ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
+const NLANG_BTN = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
+]] }
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !messageId) return
+  try {
+    await tfetch(url + '/rest/v1/news_i18n', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+    })
+  } catch (e) { console.error('storeI18n', String(e)) }
+}
+// Poste dans la langue par défaut du groupe + bouton, et pré-enregistre les DEUX
+// versions pour la bascule instantanée. imgUrl='' -> message texte.
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+  const text = (defaultLang === 'fr') ? fr : en
+  const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  if (threadId) base.message_thread_id = threadId
+  let messageId = 0
+  if (imgUrl) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, photo: imgUrl, caption: text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n photo', String(e)) }
+  }
+  if (!messageId) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
+  }
+  await storeI18n(chatId, messageId, en, fr)
+}
+
 // -- Point d'entrée --------------------------------------------
 Deno.serve(async (req: Request) => {
   const secret = Deno.env.get('CRON_SECRET')
@@ -562,15 +594,17 @@ Deno.serve(async (req: Request) => {
       // Mode "ownerOnly" : uniquement la copie owner (pour X), AUCUN post groupe.
       if (ownerOnly) { await dmOwnerCopy(botToken, result.text); console.log('daily-crypto[' + kind + '] ownerOnly envoyé'); return }
       const imgUrl = imageUrlFor(kind)
-      // 1) ANGLAIS (source) -> The Chicken Coop, Crypto Coop (1490)
-      await sendWithBanner(botToken, chatId, imgUrl, result.text, CRYPTO_THREAD_EN)
+      const en = result.text
+      const fr = await translateToFrench(en)
+      const frText = fr || en
+      // 1) EN (défaut) -> The Chicken Coop, Crypto Coop (1490) — bouton 🇬🇧/🇫🇷 pré-enregistré
+      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, imgUrl, 'en', en, frText)
       // Le soir on ne journalise QUE le laius (repris par le recap Night).
-      if (kind !== 'night') await logDailyTopic(kind, (result as any).logText || result.text)
+      if (kind !== 'night') await logDailyTopic(kind, (result as any).logText || en)
       // Copie EN -> owner (pour X) pour le Crypto Evening (18h55) ET le Crypto Night (20h45).
-      if (kind === 'evening' || kind === 'night') await dmOwnerCopy(botToken, result.text)
-      // 2) TRADUCTION FR -> Le Poulailler, Crypto Cocorico (43)
-      const fr = await translateToFrench(result.text)
-      if (fr) await sendWithBanner(botToken, FR_CHAT_ID, imgUrl, fr, FR_THREAD_CRYPTO)
+      if (kind === 'evening' || kind === 'night') await dmOwnerCopy(botToken, en)
+      // 2) FR (défaut) -> Le Poulailler, Crypto Cocorico (43)
+      if (fr) await postI18n(botToken, FR_CHAT_ID, FR_THREAD_CRYPTO, imgUrl, 'fr', en, frText)
       else console.error('daily-crypto[' + kind + ']: traduction FR vide')
       await markSent(KIND_JOB[kind] || ('crypto-' + kind))
       console.log('daily-crypto[' + kind + '] posté:', result.text.slice(0, 80))

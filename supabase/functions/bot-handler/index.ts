@@ -145,6 +145,8 @@ const X_CTA: Record<string, string> = {
 
 // Bouton "🌐 FR / EN" placé sous les news automatiques (traduction bascule).
 const TR_BUTTON = { inline_keyboard: [[{ text: '🇬🇧 EN', callback_data: 'trhot' }, { text: '🇫🇷 FR', callback_data: 'trhot' }]] }
+// Bouton des news auto PRÉ-ENREGISTRÉES (bascule instantanée via news_i18n).
+const NLANG_BTN = { inline_keyboard: [[{ text: '🇬🇧 EN', callback_data: 'nlang:en' }, { text: '🇫🇷 FR', callback_data: 'nlang:fr' }]] }
 
 // Traduit un message vers l'AUTRE langue (FR↔EN) en conservant emojis/mise en
 // page. Utilisé par le bouton de traduction sous les news auto.
@@ -465,6 +467,31 @@ Deno.serve(async (req) => {
               })
             }
           } catch (e) { console.error('grtr:', String(e)) }
+        }
+        return new Response('ok')
+      }
+
+      // ── News auto : bouton 🇬🇧/🇫🇷 (bascule INSTANTANÉE, pré-enregistrée) ──
+      // Les deux versions sont stockées dans news_i18n au moment de l'envoi →
+      // aucun appel Gemini, wording exact, marche pour photo (légende) ou texte.
+      if (cb.data === 'nlang:en' || cb.data === 'nlang:fr') {
+        const lang = cb.data.split(':')[1]
+        const m: any = cb.message
+        if (m) {
+          try {
+            const { data: snap } = await cbSupa.from('news_i18n').select('en, fr').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
+            const text = snap ? (lang === 'fr' ? snap.fr : snap.en) : null
+            if (text) {
+              const isCaption = m.caption !== undefined && m.caption !== null
+              const method = isCaption ? 'editMessageCaption' : 'editMessageText'
+              const payload: any = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: NLANG_BTN }
+              if (isCaption) payload.caption = text
+              else { payload.text = text; payload.disable_web_page_preview = true }
+              await fetch(`https://api.telegram.org/bot${cbToken}/${method}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+              })
+            }
+          } catch (e) { console.error('nlang:', String(e)) }
         }
         return new Response('ok')
       }

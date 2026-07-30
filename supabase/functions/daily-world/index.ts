@@ -314,6 +314,36 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
   }
 }
 
+// ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
+const NLANG_BTN = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
+]] }
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !messageId) return
+  try {
+    await tfetch(url + '/rest/v1/news_i18n', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+    })
+  } catch (e) { console.error('storeI18n', String(e)) }
+}
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+  const text = (defaultLang === 'fr') ? fr : en
+  const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  if (threadId) base.message_thread_id = threadId
+  let messageId = 0
+  if (imgUrl) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, photo: imgUrl, caption: text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n photo', String(e)) }
+  }
+  if (!messageId) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
+  }
+  await storeI18n(chatId, messageId, en, fr)
+}
+
 // Copie EN -> owner uniquement (pour coller sur X). SANS lien : le lien t.me
 // dans un post X provoque un shadowban -> il se met en commentaire via /x… du bot.
 const OWNER_DM_ID = 6593812300
@@ -385,17 +415,19 @@ Deno.serve(async (req: Request) => {
       if (!result.ok) { console.error('daily-world[' + kind + '] echec:', result.reason); return }
       const imgUrl = imageUrlFor(kind)
       const hookEn = (kind === 'wr_night') ? NIGHT_HOOK_EN : WORLD[kind as WSlot].hookEn
-      // 1) FRANCAIS (source) -> Le Poulailler, Actu generale (45)
-      await sendWithBanner(botToken, FR_CHAT_ID, imgUrl, result.frText, FR_THREAD_WORLD)
-      if (kind !== 'wr_night') await logDailyTopic(kind, result.frText)
-      // 2) TRADUCTION EN -> The Chicken Coop, World Roost (1489)
-      const frBody = result.frText.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
+      const fr = result.frText
+      // Traduction EN avant de poster, pour pré-enregistrer les DEUX versions.
+      const frBody = fr.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
       const enBody = await translateToEnglish(frBody)
+      const en = enBody ? (hookEn + NL + NL + enBody) : fr   // repli EN=FR si trad vide
+      // 1) FR (défaut) -> Le Poulailler, Actu generale (45) — bouton 🇬🇧/🇫🇷
+      await postI18n(botToken, FR_CHAT_ID, FR_THREAD_WORLD, imgUrl, 'fr', en, fr)
+      if (kind !== 'wr_night') await logDailyTopic(kind, fr)
+      // 2) EN (défaut) -> The Chicken Coop, World Roost (1489)
       if (enBody) {
-        const enMsg = hookEn + NL + NL + enBody
-        await sendWithBanner(botToken, chatId, imgUrl, enMsg, WORLD_THREAD_EN)
+        await postI18n(botToken, chatId, WORLD_THREAD_EN, imgUrl, 'en', en, fr)
         // Recap info du soir (21h40) : copie EN + CTA -> owner (pour X).
-        if (kind === 'wr_night') await dmOwnerCopy(botToken, enMsg)
+        if (kind === 'wr_night') await dmOwnerCopy(botToken, en)
       } else console.error('daily-world[' + kind + ']: traduction EN vide')
       await markSent(KIND_JOB[kind] || ('world-' + kind))
       console.log('daily-world[' + kind + '] poste:', result.frText.slice(0, 80))

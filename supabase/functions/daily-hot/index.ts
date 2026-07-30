@@ -319,6 +319,36 @@ async function postPhotoToGroup(token: string, chatId: number, photoUrl: string,
   } catch (e) { console.error('postPhotoToGroup exception:', String(e)); return false }
 }
 
+// ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
+const NLANG_BTN = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
+]] }
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !messageId) return
+  try {
+    await tfetch(url + '/rest/v1/news_i18n', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+    })
+  } catch (e) { console.error('storeI18n', String(e)) }
+}
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+  const text = (defaultLang === 'fr') ? fr : en
+  const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  if (threadId) base.message_thread_id = threadId
+  let messageId = 0
+  if (imgUrl) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, photo: imgUrl, caption: text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n photo', String(e)) }
+  }
+  if (!messageId) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
+  }
+  await storeI18n(chatId, messageId, en, fr)
+}
+
 // -- Point d'entree --------------------------------------------
 Deno.serve(async (req: Request) => {
   const secret = Deno.env.get('CRON_SECRET')
@@ -347,11 +377,12 @@ Deno.serve(async (req: Request) => {
       if (!result.ok) { console.error('daily-hot echec:', result.reason); return }
       const img = result.image
       // Hot news EXCLUSIVEMENT dans le groupe privé (Golden Rooster / General),
-      // en anglais + bouton "🌐 FR / EN". Plus AUCUN envoi dans The Chicken Coop
-      // ni dans Le Poulailler.
-      if (img) { const ok = await postPhotoToGroup(botToken, GR_CHAT_ID, img, result.text, GR_THREAD_HOT, TR_BUTTON); if (!ok) await postToGroup(botToken, GR_CHAT_ID, result.text, GR_THREAD_HOT, TR_BUTTON) }
-      else await postToGroup(botToken, GR_CHAT_ID, result.text, GR_THREAD_HOT, TR_BUTTON)
-      await logDailyTopic(result.title || result.text)   // titre source = cle d'unicite 72h
+      // par défaut en anglais + bouton 🇬🇧/🇫🇷 PRÉ-ENREGISTRÉ (bascule instantanée,
+      // sans appel Gemini). Plus AUCUN envoi dans The Chicken Coop ni Le Poulailler.
+      const en = result.text
+      const fr = await translateToFrench(en)
+      await postI18n(botToken, GR_CHAT_ID, GR_THREAD_HOT, img, 'en', en, fr || en)
+      await logDailyTopic(result.title || en)   // titre source = cle d'unicite 72h
       await markSent(slot)
       console.log('daily-hot poste (prive):', result.text.slice(0, 80))
     } catch (e) { console.error('daily-hot bg exception:', String(e)) }

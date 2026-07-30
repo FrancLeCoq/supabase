@@ -174,6 +174,35 @@ async function sendWithBanner(token: string, chatId: number, text: string): Prom
   if (!ok) await postToGroup(token, chatId, text)
 }
 
+// ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
+const NLANG_BTN = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
+]] }
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !messageId) return
+  try {
+    await tfetch(url + '/rest/v1/news_i18n', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+    })
+  } catch (e) { console.error('storeI18n', String(e)) }
+}
+async function postI18n(token: string, chatId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+  const text = (defaultLang === 'fr') ? fr : en
+  const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  let messageId = 0
+  if (imgUrl) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, photo: imgUrl, caption: text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n photo', String(e)) }
+  }
+  if (!messageId) {
+    try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
+  }
+  await storeI18n(chatId, messageId, en, fr)
+}
+
 // Copie owner (pour X) : message EN SEUL, sans lien (le lien t.me dans un post
 // X provoque un shadowban -> il se met en commentaire via /x… du bot).
 const OWNER_DM_ID = 6593812300
@@ -233,11 +262,14 @@ Deno.serve(async (req: Request) => {
     try {
       const result = await generateFact()
       if (!result.ok) { console.error('daily-fact-dyk echec:', result.reason); return }
-      await sendWithBanner(botToken, chatId, result.text)            // The Chicken Coop - General
-      const fr = await translateToFrench(result.text)
-      if (fr) await sendWithBanner(botToken, FR_CHAT_ID, fr)         // Le Poulailler - General
+      const en = result.text
+      const img = imageUrl()
+      const fr = await translateToFrench(en)
+      const frText = fr || en
+      await postI18n(botToken, chatId, img, 'en', en, frText)            // EN (défaut) -> The Chicken Coop, General
+      if (fr) await postI18n(botToken, FR_CHAT_ID, img, 'fr', en, frText) // FR (défaut) -> Le Poulailler, General
       else console.error('daily-fact-dyk: traduction FR vide')
-      await dmOwnerCopy(botToken, result.text)          // copie EN -> owner (pour X, sans lien)
+      await dmOwnerCopy(botToken, en)          // copie EN -> owner (pour X, sans lien)
       await markSent('franc-did-you-know-1')
       console.log('daily-fact-dyk poste:', result.text.slice(0, 80))
     } catch (e) { console.error('daily-fact-dyk bg exception:', String(e)) }

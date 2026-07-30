@@ -106,6 +106,37 @@ async function postToGroup(token: string, chatId: number, text: string): Promise
   } catch (e) { console.error('daily-general postToGroup exception', String(e)) }
 }
 
+// ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
+const NLANG_BTN = { inline_keyboard: [[
+  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
+  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
+]] }
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !messageId) return
+  try {
+    await tfetch(url + '/rest/v1/news_i18n', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+    })
+  } catch (e) { console.error('storeI18n', String(e)) }
+}
+// Poste (texte seul) dans la langue par défaut du groupe + bouton, et
+// pré-enregistre les DEUX versions pour la bascule instantanée.
+async function postI18n(token: string, chatId: number, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+  const text = (defaultLang === 'fr') ? fr : en
+  let messageId = 0
+  try {
+    const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true, reply_markup: NLANG_BTN }),
+    })
+    const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0
+  } catch (e) { console.error('postI18n text', String(e)) }
+  await storeI18n(chatId, messageId, en, fr)
+}
+
 // Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
 async function markSent(jobKey: string): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL')
@@ -151,13 +182,15 @@ Deno.serve(async (req: Request) => {
 
   const bg = (async () => {
     try {
-      // EN -> The Chicken Coop (General)
+      // Les deux versions sont générées avant de poster (bascule pré-enregistrée).
       const en = await generate(promptFor('English'))
-      if (en) await postToGroup(botToken, enChatId, en)
-      else console.error('daily-general[' + kind + '] EN vide')
-      // FR -> Le Poulailler (General)
       const fr = await generate(promptFor('French'))
-      if (fr) await postToGroup(botToken, FR_CHAT_ID, fr)
+      const enText = en || fr, frText = fr || en
+      // EN (défaut) -> The Chicken Coop (General)
+      if (en) await postI18n(botToken, enChatId, 'en', enText, frText)
+      else console.error('daily-general[' + kind + '] EN vide')
+      // FR (défaut) -> Le Poulailler (General)
+      if (fr) await postI18n(botToken, FR_CHAT_ID, 'fr', enText, frText)
       else console.error('daily-general[' + kind + '] FR vide')
       await markSent(kind === 'gn' ? 'franc-gn' : 'franc-gm-joke')
       console.log('daily-general[' + kind + '] poste')
