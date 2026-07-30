@@ -140,8 +140,7 @@ function coopWelcome(m: string) {
 //  gardées jusqu'au prochain /setup. (Poulailler supprimé.)
 // ══════════════════════════════════════════════════════════════
 const SLANG_ROW = [
-  { text: '🇬🇧 EN', callback_data: 'slang:en' },
-  { text: '🇫🇷 FR', callback_data: 'slang:fr' },
+  { text: 'Translate in French 🇫🇷', callback_data: 'slang:fr' },
 ]
 async function postSetupBilingual(
   token: string, supabase: any,
@@ -178,8 +177,44 @@ const X_CTA: Record<string, string> = {
 
 // Bouton "🌐 FR / EN" placé sous les news automatiques (traduction bascule).
 const TR_BUTTON = { inline_keyboard: [[{ text: '🇬🇧 EN', callback_data: 'trhot' }, { text: '🇫🇷 FR', callback_data: 'trhot' }]] }
-// Bouton des news auto PRÉ-ENREGISTRÉES (bascule instantanée via news_i18n).
-const NLANG_BTN = { inline_keyboard: [[{ text: '🇬🇧 EN', callback_data: 'nlang:en' }, { text: '🇫🇷 FR', callback_data: 'nlang:fr' }]] }
+// Bouton des news auto PRÉ-ENREGISTRÉES : un SEUL bouton « Translate in French ».
+// Au clic → aperçu FR ~20 s avec décompte, puis retour auto à l'anglais.
+const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
+
+// ── Aperçu FR temporaire (20 s) + décompte, puis retour auto à l'anglais ──
+// Message partagé par tout le groupe → le FR n'est qu'un coup d'œil de 20 s.
+const FR_PEEK_SECONDS = 20
+const translateRow = (frCb: string) => [{ text: 'Translate in French 🇫🇷', callback_data: frCb }]
+const backRow = (enCb: string, s: number) => [{ text: `⏳ Back in English in ${s}s`, callback_data: enCb }]
+const peekSleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+// Gère le clic (lang='fr' → aperçu+décompte ; lang='en' → retour immédiat).
+// enRows/frRows = éventuels boutons de contenu à garder au-dessus de la langue.
+async function handleFrToggle(o: {
+  token: string; chatId: number; messageId: number; isCaption: boolean; html: boolean;
+  lang: string; enText: string; frText: string; enRows: any[]; frRows: any[]; frCb: string; enCb: string;
+}) {
+  const editBody = async (txt: string, kb: any[]) => {
+    const method = o.isCaption ? 'editMessageCaption' : 'editMessageText'
+    const p: any = { chat_id: o.chatId, message_id: o.messageId, reply_markup: { inline_keyboard: kb } }
+    if (o.html) p.parse_mode = 'HTML'
+    if (o.isCaption) p.caption = txt; else { p.text = txt; p.disable_web_page_preview = true }
+    await fetch(`https://api.telegram.org/bot${o.token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+  }
+  if (o.lang === 'en') { await editBody(o.enText, [...o.enRows, translateRow(o.frCb)]); return }
+  // FR : on montre le français + décompte, puis retour auto à l'anglais.
+  await editBody(o.frText, [...o.frRows, backRow(o.enCb, FR_PEEK_SECONDS)])
+  const setBtn = async (kb: any[]) => {
+    await fetch(`https://api.telegram.org/bot${o.token}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: o.chatId, message_id: o.messageId, reply_markup: { inline_keyboard: kb } }) })
+  }
+  const bg = (async () => {
+    try {
+      for (let s = FR_PEEK_SECONDS - 1; s >= 1; s--) { await peekSleep(1000); await setBtn([...o.frRows, backRow(o.enCb, s)]) }
+      await peekSleep(1000)
+      await editBody(o.enText, [...o.enRows, translateRow(o.frCb)])
+    } catch (_) { /* message supprimé / trop ancien : on ignore */ }
+  })()
+  ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
+}
 
 // Traduit un message vers l'AUTRE langue (FR↔EN) en conservant emojis/mise en
 // page. Utilisé par le bouton de traduction sous les news auto.
@@ -482,22 +517,19 @@ Deno.serve(async (req) => {
         if (m) {
           try {
             const cronSecret = Deno.env.get('CRON_SECRET') || ''
-            const r = await fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/daily-recheck', {
-              method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
-              body: JSON.stringify({ mode: 'render', lang, chat_id: m.chat.id, message_id: m.message_id }),
-            })
-            const j = await r.json()
-            if (j && j.text) {
-              await fetch(`https://api.telegram.org/bot${cbToken}/editMessageText`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  chat_id: m.chat.id, message_id: m.message_id, text: j.text,
-                  parse_mode: 'HTML', disable_web_page_preview: true,
-                  reply_markup: { inline_keyboard: [
-                    [ { text: '🇬🇧 EN', callback_data: 'grtr:en' }, { text: '🇫🇷 FR', callback_data: 'grtr:fr' } ],
-                    [ { text: 'The Chicken Coop 🇬🇧', url: 'https://t.me/LeCoqFrancis' }, { text: 'Le Poulailler 🇫🇷', url: 'https://t.me/FrancisLeCoq' } ],
-                  ] },
-                }),
+            const render = async (l: string) => {
+              const r = await fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/daily-recheck', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+                body: JSON.stringify({ mode: 'render', lang: l, chat_id: m.chat.id, message_id: m.message_id }),
+              })
+              const j = await r.json(); return (j && j.text) ? String(j.text) : ''
+            }
+            const [enText, frText] = await Promise.all([render('en'), render('fr')])
+            const coopRow = [{ text: '🇬🇧 The Chicken Coop 🇫🇷', url: 'https://t.me/LeCoqFrancis' }]
+            if (enText) {
+              await handleFrToggle({
+                token: cbToken, chatId: m.chat.id, messageId: m.message_id, isCaption: false, html: true,
+                lang, enText, frText: frText || enText, enRows: [coopRow], frRows: [coopRow], frCb: 'grtr:fr', enCb: 'grtr:en',
               })
             }
           } catch (e) { console.error('grtr:', String(e)) }
@@ -516,40 +548,11 @@ Deno.serve(async (req) => {
           try {
             const { data: snap } = await cbSupa.from('news_i18n').select('en, fr, html').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
             if (snap) {
-              const isCaption = m.caption !== undefined && m.caption !== null
-              const method = isCaption ? 'editMessageCaption' : 'editMessageText'
-              // Édite le CORPS (texte/légende) + le clavier.
-              const editBody = async (txt: string, kb: any) => {
-                const p: any = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: kb }
-                if (snap.html) p.parse_mode = 'HTML'
-                if (isCaption) p.caption = txt
-                else { p.text = txt; p.disable_web_page_preview = true }
-                await fetch(`https://api.telegram.org/bot${cbToken}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
-              }
-              // Met à jour SEULEMENT le clavier (n'ajoute pas la mention « modifié »).
-              const setBtn = async (kb: any) => {
-                await fetch(`https://api.telegram.org/bot${cbToken}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: m.chat.id, message_id: m.message_id, reply_markup: kb }) })
-              }
-              const frBtn = (s: number) => ({ inline_keyboard: [[
-                { text: '🇬🇧 EN', callback_data: 'nlang:en' },
-                { text: `🇫🇷 FR · ${s}s`, callback_data: 'nlang:fr' },
-              ]] })
-
-              if (lang === 'en') {
-                await editBody(snap.en, NLANG_BTN)
-              } else {
-                await editBody(snap.fr, frBtn(20))
-                // Décompte + retour auto à l'anglais, en tâche de fond.
-                const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-                const bg = (async () => {
-                  try {
-                    for (let s = 19; s >= 1; s--) { await sleep(1000); await setBtn(frBtn(s)) }
-                    await sleep(1000)
-                    await editBody(snap.en, NLANG_BTN)
-                  } catch (_) { /* message supprimé / trop ancien : on ignore */ }
-                })()
-                ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
-              }
+              await handleFrToggle({
+                token: cbToken, chatId: m.chat.id, messageId: m.message_id,
+                isCaption: m.caption !== undefined && m.caption !== null, html: !!snap.html,
+                lang, enText: snap.en, frText: snap.fr, enRows: [], frRows: [], frCb: 'nlang:fr', enCb: 'nlang:en',
+              })
             }
           } catch (e) { console.error('nlang:', String(e)) }
         }
@@ -564,18 +567,10 @@ Deno.serve(async (req) => {
           try {
             const { data: snap } = await cbSupa.from('setup_i18n').select('en_text, fr_text, en_kb, fr_kb').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
             if (snap) {
-              const text = lang === 'fr' ? snap.fr_text : snap.en_text
-              const kb = (lang === 'fr' ? snap.fr_kb : snap.en_kb) || []
-              await fetch(`https://api.telegram.org/bot${cbToken}/editMessageText`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  chat_id: m.chat.id, message_id: m.message_id, text,
-                  parse_mode: 'HTML', disable_web_page_preview: true,
-                  reply_markup: { inline_keyboard: [...kb, [
-                    { text: '🇬🇧 EN', callback_data: 'slang:en' },
-                    { text: '🇫🇷 FR', callback_data: 'slang:fr' },
-                  ]] },
-                }),
+              await handleFrToggle({
+                token: cbToken, chatId: m.chat.id, messageId: m.message_id, isCaption: false, html: true,
+                lang, enText: snap.en_text, frText: snap.fr_text,
+                enRows: snap.en_kb || [], frRows: snap.fr_kb || [], frCb: 'slang:fr', enCb: 'slang:en',
               })
             }
           } catch (e) { console.error('slang:', String(e)) }
@@ -993,11 +988,11 @@ Deno.serve(async (req) => {
         `/xf1 — Post X F1\n/xmotogp — Post X MotoGP\n/xcrypto — Post X Crypto\n` +
         `/xnews — Post X actu internationale\n/xfranc — Post X $FRANC (CA + liens)\n\n` +
         `<b>5️⃣ Modération</b>\n` +
-        `/stopbotuser — Couper le bot pour un user (DM)\n/stopbotpoulailleruser — … dans Le Poulailler\n` +
+        `/stopbotuser — Couper le bot pour un user (DM)\n` +
         `/stopbotchickencoopuser — … dans The Chicken Coop\n` +
-        `/playbotuser · /playbotpoulailleruser · /playbotchickencoopuser — Réactiver un user\n` +
-        `/stopbot · /stopbotpoulailler · /stopbotchickencoop — Couper par groupe\n` +
-        `/playbot · /playbotpoulailler · /playbotchickencoop — Réactiver par groupe\n` +
+        `/playbotuser · /playbotchickencoopuser — Réactiver un user\n` +
+        `/stopbot · /stopbotchickencoop — Couper par groupe\n` +
+        `/playbot · /playbotchickencoop — Réactiver par groupe\n` +
         `/enablesecretary — Mode secrétaire Business\n\n` +
         `<b>6️⃣ Publiques (tous)</b>\n` +
         `/start · /help · /rules · /status · /ca · /nodm\n` +

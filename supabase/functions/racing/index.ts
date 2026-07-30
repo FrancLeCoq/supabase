@@ -43,10 +43,7 @@ async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promis
 }
 
 // Bouton 🇬🇧/🇫🇷 pré-enregistré (bascule instantanée via news_i18n, sans IA).
-const NLANG_BTN = { inline_keyboard: [[
-  { text: '🇬🇧 EN', callback_data: 'nlang:en' },
-  { text: '🇫🇷 FR', callback_data: 'nlang:fr' },
-]] }
+const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
 async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key || !messageId) return

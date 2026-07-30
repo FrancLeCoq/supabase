@@ -49,7 +49,7 @@ const TIME_STR = { en: '10:00 AM (Paris)', fr: '10h00 (heure de Paris)' }
 // par bot-handler via grtr:en / grtr:fr) ; ligne 2 = accès direct aux deux
 // groupes « passerelle » (Coop sous EN, Poulailler sous FR) → la boucle est bouclée.
 const GR_TR_BUTTON = { inline_keyboard: [
-  [ { text: '🇬🇧 EN', callback_data: 'grtr:en' }, { text: '🇫🇷 FR', callback_data: 'grtr:fr' } ],
+  [ { text: 'Translate in French 🇫🇷', callback_data: 'grtr:fr' } ],
   [ { text: '🇬🇧 The Chicken Coop 🇫🇷', url: 'https://t.me/LeCoqFrancis' } ],
 ] }
 
