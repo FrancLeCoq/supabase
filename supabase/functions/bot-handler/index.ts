@@ -77,6 +77,13 @@ function userMention(u: any): string {
   const nm = String(u?.first_name || 'friend').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   return `<a href="tg://user?id=${u.id}">${nm}</a>`
 }
+// Salutation d'ouverture (GM / hi / bonjour…) → déclenche l'accueil (1 fois/user).
+// Court volontairement (les vraies salutations le sont) pour éviter les faux positifs.
+function isGreeting(raw: string): boolean {
+  const t = (raw || '').trim().toLowerCase()
+  if (!t || t.length > 30) return false
+  return /^(gm+|g\s?m|good\s?morning|good\s?evening|hi+|hii+|hey+|hello+|helo+|yo+|hola|wagmi|salut|slt|bonjour|bjr|coucou|cc|bonsoir|bsr)\b/.test(t)
+}
 
 // Golden Rooster — NON membre d'un des deux groupes requis.
 function grWelcomeNotMember(m: string) {
@@ -286,11 +293,9 @@ Deno.serve(async (req) => {
             // left / kicked / banned
             await supabase.from('group_members').update({ status: 'kicked' }).eq('telegram_id', u.id)
           }
-        } else if (chatIdCm === CHICKEN_COOP && isInNow && !wasIn) {
-          try { const w = coopWelcome(mention); await sendMessage(token, CHICKEN_COOP, w.text, { reply_markup: w.reply_markup }) } catch (e) { console.error('Coop welcome:', String(e)) }
-        } else if (chatIdCm === POULAILLER_FR && isInNow && !wasIn) {
-          try { const w = poulWelcome(mention); await sendMessage(token, POULAILLER_FR, w.text, { reply_markup: w.reply_markup }) } catch (e) { console.error('Poul welcome:', String(e)) }
         }
+        // The Chicken Coop / Le Poulailler : PLUS d'accueil à l'arrivée — il se
+        // déclenche désormais sur le 1er GM/hi du nouvel arrivant (voir plus bas).
       }
       return new Response('ok')
     }
@@ -1293,6 +1298,19 @@ Deno.serve(async (req) => {
       const status = await getChatMemberStatus(token, chatId, msg.from.id)
       console.log(`group msg: userId=${userId} status=${status}`)
       if (status === 'administrator' || status === 'creator') return new Response('ok')
+
+      // ── Accueil déclenché par un GM/hi (UNE seule fois par personne & groupe) ──
+      // Remplace l'accueil à l'arrivée (qui pouvait se répéter). Répond au message
+      // avec un mot de bienvenue + le bouton vers le bot.
+      if (isGreeting(rawText)) {
+        const { data: seen } = await supabase.from('group_welcomed').select('user_id').eq('chat_id', chatId).eq('user_id', msg.from.id).maybeSingle()
+        if (!seen) {
+          try { await supabase.from('group_welcomed').upsert({ chat_id: chatId, user_id: msg.from.id }) } catch (_) { /* ok */ }
+          const w = (chatId === POULAILLER_FR) ? poulWelcome(userMention(msg.from)) : coopWelcome(userMention(msg.from))
+          await sendMessage(token, chatId, w.text, { reply_markup: w.reply_markup, reply_to_message_id: messageId })
+          return new Response('ok')
+        }
+      }
 
       // ══════════════════════════════════════════════════════════
       //  ⏸️  GATING HOLDER EN ÉCRITURE — EN PAUSE
