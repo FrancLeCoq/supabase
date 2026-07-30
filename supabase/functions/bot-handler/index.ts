@@ -130,6 +130,39 @@ function coopWelcome(m: string) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  SETUP bilingue : poste EN (défaut) dans The Chicken Coop et FR (défaut)
+//  dans Le Poulailler, chacun avec ses boutons de contenu + une ligne 🇬🇧/🇫🇷.
+//  Les DEUX versions (texte + clavier) sont mémorisées dans setup_i18n pour
+//  la bascule instantanée (callback slang), et gardées jusqu'au prochain /setup.
+// ══════════════════════════════════════════════════════════════
+const SLANG_ROW = [
+  { text: '🇬🇧 EN', callback_data: 'slang:en' },
+  { text: '🇫🇷 FR', callback_data: 'slang:fr' },
+]
+async function postSetupBilingual(
+  token: string, supabase: any,
+  enThread: number, frThread: number,
+  enText: string, enKb: any[], frText: string, frKb: any[],
+): Promise<void> {
+  // EN (défaut) -> The Chicken Coop
+  const enExtra: Record<string, any> = { reply_markup: { inline_keyboard: [...enKb, SLANG_ROW] } }
+  if (enThread && enThread > 1) enExtra.message_thread_id = enThread
+  const sentEn = await sendMessage(token, CHICKEN_COOP, enText, enExtra)
+  if (sentEn?.message_id) {
+    await pinMessage(token, CHICKEN_COOP, sentEn.message_id)
+    try { await supabase.from('setup_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sentEn.message_id, en_text: enText, fr_text: frText, en_kb: enKb, fr_kb: frKb, updated_at: new Date().toISOString() }) } catch (e) { console.error('setup_i18n EN', String(e)) }
+  }
+  // FR (défaut) -> Le Poulailler
+  const frExtra: Record<string, any> = { reply_markup: { inline_keyboard: [...frKb, SLANG_ROW] } }
+  if (frThread && frThread > 1) frExtra.message_thread_id = frThread
+  const sentFr = await sendMessage(token, POULAILLER_FR, frText, frExtra)
+  if (sentFr?.message_id) {
+    await pinMessage(token, POULAILLER_FR, sentFr.message_id)
+    try { await supabase.from('setup_i18n').upsert({ chat_id: POULAILLER_FR, message_id: sentFr.message_id, en_text: enText, fr_text: frText, en_kb: enKb, fr_kb: frKb, updated_at: new Date().toISOString() }) } catch (e) { console.error('setup_i18n FR', String(e)) }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  Mentions "rejoins le poulailler" à coller EN COMMENTAIRE d'un post X.
 //  Le lien t.me dans le post LUI-MÊME provoque un shadowban : on ne le met
 //  donc plus dans les copies owner, il se poste en commentaire via /x…
@@ -493,6 +526,33 @@ Deno.serve(async (req) => {
               })
             }
           } catch (e) { console.error('nlang:', String(e)) }
+        }
+        return new Response('ok')
+      }
+
+      // ── Setup : bouton 🇬🇧/🇫🇷 (bascule texte + clavier, pré-enregistrée) ──
+      if (cb.data === 'slang:en' || cb.data === 'slang:fr') {
+        const lang = cb.data.split(':')[1]
+        const m: any = cb.message
+        if (m) {
+          try {
+            const { data: snap } = await cbSupa.from('setup_i18n').select('en_text, fr_text, en_kb, fr_kb').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
+            if (snap) {
+              const text = lang === 'fr' ? snap.fr_text : snap.en_text
+              const kb = (lang === 'fr' ? snap.fr_kb : snap.en_kb) || []
+              await fetch(`https://api.telegram.org/bot${cbToken}/editMessageText`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: m.chat.id, message_id: m.message_id, text,
+                  parse_mode: 'HTML', disable_web_page_preview: true,
+                  reply_markup: { inline_keyboard: [...kb, [
+                    { text: '🇬🇧 EN', callback_data: 'slang:en' },
+                    { text: '🇫🇷 FR', callback_data: 'slang:fr' },
+                  ]] },
+                }),
+              })
+            }
+          } catch (e) { console.error('slang:', String(e)) }
         }
         return new Response('ok')
       }
@@ -1342,7 +1402,7 @@ Deno.serve(async (req) => {
     if (text === '/setupwallet') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      await mirrorEnSetup(token, EN_TOPIC.wallet,
+      await postSetupBilingual(token, supabase, EN_TOPIC.wallet, FR_TOPIC.wallet,
         `🔗 <b>UNLOCK THE FULL EXPERIENCE</b>\n\n` +
         `Hold $FRANC on <b>Solana</b> or <b>TON</b> to unlock exclusive features across many games — plus a special 🌶️ spicy category. For free!\n\n` +
         `Or unlock everything with ⭐ Stars and get a generous cashback.\n\n` +
@@ -1353,9 +1413,7 @@ Deno.serve(async (req) => {
           [{ text: '📊 Check my status', callback_data: 'status' }],
           [{ text: '🐔 All games & rooster universe', url: MENU_DEEPLINK }]
         ]
-      )
-      // Version FR dans « Le Poulailler » (topic Wallet)
-      await mirrorFrSetup(token, FR_TOPIC.wallet,
+      ,
         `🔗 <b>DÉBLOQUE L'EXPÉRIENCE COMPLÈTE</b>\n\n` +
         `Détiens du $FRANC sur <b>Solana</b> ou <b>TON</b> pour débloquer des fonctionnalités exclusives dans de nombreux jeux — plus une catégorie 🌶️ épicée spéciale. Gratuitement !\n\n` +
         `Ou débloque tout avec des ⭐ Stars et reçois un généreux cashback.\n\n` +
@@ -1377,7 +1435,7 @@ Deno.serve(async (req) => {
     if (text === '/setupgames') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      await mirrorEnSetup(token, EN_TOPIC.games,
+      await postSetupBilingual(token, supabase, EN_TOPIC.games, FR_TOPIC.games,
         `🎉 <b>Welcome to Francis' Games Universe</b>\n\n` +
         `🐓 <b>Tamagotchi</b> — Keep Francis alive\n` +
         `🔫 <b>FrancRun</b> — Run. Dodge. Score.\n` +
@@ -1398,9 +1456,7 @@ Deno.serve(async (req) => {
           [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }]
         ]
-      )
-      // Version FR dans « Le Poulailler » (topic Jeux)
-      await mirrorFrSetup(token, FR_TOPIC.games,
+      ,
         `🎉 <b>Bienvenue dans l'univers des jeux de Francis</b>\n\n` +
         `🐓 <b>Tamagotchi</b> — Garde Francis en vie\n` +
         `🔫 <b>FrancRun</b> — Cours. Esquive. Score.\n` +
@@ -1429,7 +1485,7 @@ Deno.serve(async (req) => {
     if (text === '/setupchickencoop') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      await mirrorEnSetup(token, EN_TOPIC.coop,
+      await postSetupBilingual(token, supabase, EN_TOPIC.coop, FR_TOPIC.coop,
         `🐓 <b>Welcome to The Chicken Coop!</b>\n\n` +
         `The official home of <b>$FRANC by Francis the rooster</b> — a community memecoin with a whole universe of games. 🎮\n\n` +
         `Find your way around:\n` +
@@ -1450,9 +1506,7 @@ Deno.serve(async (req) => {
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }, { text: '🔗 Wallet', url: WALLET_URL }],
           [{ text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }, { text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }]
         ]
-      )
-      // Version FR dans « Le Poulailler » (topic Accueil)
-      await mirrorFrSetup(token, FR_TOPIC.coop,
+      ,
         `🐓 <b>Bienvenue au Poulailler !</b>\n\n` +
         `La maison officielle de <b>$FRANC by Francis le coq</b> — un memecoin communautaire avec tout un univers de jeux. 🎮\n\n` +
         `Repère-toi facilement :\n` +
@@ -1484,7 +1538,7 @@ Deno.serve(async (req) => {
     if (text === '/setuphotwings') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      await mirrorEnSetup(token, EN_TOPIC.hotwings,
+      await postSetupBilingual(token, supabase, EN_TOPIC.hotwings, FR_TOPIC.hotwings,
         `🌶️ <b>Hot Wings</b>\n\n` +
         `The spiciest corner of the coop: the must-read headlines from the adult-entertainment industry — new releases, performers, launches, awards and big moves. Playful and flirty, always tasteful. 🔥\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
@@ -1492,8 +1546,7 @@ Deno.serve(async (req) => {
         `👉 15:15 — Hot midday\n` +
         `👉 19:50 — Hot evening`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
-      )
-      await mirrorFrSetup(token, FR_TOPIC.hotwings,
+      ,
         `🌶️ <b>Le Poulailler Interdit</b>\n\n` +
         `Le coin le plus épicé du poulailler : l'actu à ne pas manquer de l'industrie du divertissement pour adultes — sorties, stars, lancements, récompenses et gros mouvements. Taquin et coquin, toujours avec classe. 🔥\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
@@ -1512,7 +1565,7 @@ Deno.serve(async (req) => {
     if (text === '/setuptrump') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      await mirrorEnSetup(token, EN_TOPIC.trump,
+      await postSetupBilingual(token, supabase, EN_TOPIC.trump, FR_TOPIC.trump,
         `🇺🇸 <b>Trump News — live from Truth Social</b>\n\n` +
         `Every <b>original</b> post from Donald J. Trump on Truth Social, mirrored here automatically — text, photos & videos — within minutes. 🦅\n\n` +
         `💰 Trump wanted to charge up to <b>$100,000/month</b> for early access to his posts.\n` +
@@ -1520,8 +1573,7 @@ Deno.serve(async (req) => {
         `<b>That's the spirit of the coop.</b> 🐔\n\n` +
         `<i>Reposts (RT) are skipped — only his own original posts.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
-      )
-      await mirrorFrSetup(token, FR_TOPIC.trump,
+      ,
         `🇺🇸 <b>Trump News — en direct de Truth Social</b>\n\n` +
         `Chaque post <b>original</b> de Donald J. Trump sur Truth Social, recopié ici automatiquement — texte, photos & vidéos — en quelques minutes. 🦅\n\n` +
         `💰 Trump voulait faire payer jusqu'à <b>100 000 $/mois</b> pour accéder en primeur à ses posts.\n` +
@@ -1540,7 +1592,7 @@ Deno.serve(async (req) => {
     if (text === '/setupcryptocoop') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      await mirrorEnSetup(token, EN_TOPIC.cryptocoop,
+      await postSetupBilingual(token, supabase, EN_TOPIC.cryptocoop, FR_TOPIC.cryptocoop,
         `💰 <b>Crypto Coop</b>\n\n` +
         `Non-stop crypto news, decoded for everyone: the biggest market moves, regulation, ETFs, hacks and adoption — plus a daily "Cocorico Pump" spotlight on the top 24h gainer, and an end-of-day wrap. 🐓\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
@@ -1551,8 +1603,7 @@ Deno.serve(async (req) => {
         `👉 18:55 — Evening\n` +
         `👉 20:45 — Night wrap`,
         [[{ text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }]]
-      )
-      await mirrorFrSetup(token, FR_TOPIC.cryptocoop,
+      ,
         `💰 <b>Crypto Cocorico</b>\n\n` +
         `L'actu crypto en continu, décryptée pour tous : les gros mouvements de marché, la régulation, les ETF, les hacks et l'adoption — plus un « Cocorico Pump » quotidien sur le plus gros gagnant 24h, et un récap de fin de journée. 🐓\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
@@ -1574,7 +1625,7 @@ Deno.serve(async (req) => {
     if (text === '/setupworldroost') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
-      await mirrorEnSetup(token, EN_TOPIC.worldroost,
+      await postSetupBilingual(token, supabase, EN_TOPIC.worldroost, FR_TOPIC.worldroost,
         `📰 <b>World Roost</b>\n\n` +
         `The world's biggest stories, every day, clear and to the point: geopolitics, economy, tech and the evening brief — so you never miss what matters. 🌍\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
@@ -1585,8 +1636,7 @@ Deno.serve(async (req) => {
         `👉 18:00 — The World Tonight\n` +
         `👉 21:40 — The Day in Review`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
-      )
-      await mirrorFrSetup(token, FR_TOPIC.worldroost,
+      ,
         `📰 <b>Le Chant du Monde</b>\n\n` +
         `Les grandes actus internationales, chaque jour, claires et à l'essentiel : géopolitique, économie, tech et le brief du soir — pour ne rien rater de ce qui compte. 🌍\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
