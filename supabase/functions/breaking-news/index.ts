@@ -32,6 +32,7 @@ const CAT: Record<string, { emoji: string; label: string }> = {
   worldroost: { emoji: '🌍', label: 'World Roost' },
   crypto: { emoji: '⚡', label: 'Crypto' },
   x: { emoji: '📤', label: 'X' },   // annonce prête à publier sur X (Twitter)
+  xtrend: { emoji: '🔥', label: 'X Trend' },   // post viral sur une tendance X (hors $FRANC)
 }
 
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -140,6 +141,38 @@ function xShareKeyboard(text: string) {
   return { inline_keyboard: [row] }
 }
 
+// Recherche des 4 plus grosses tendances X (Twitter) mondiales du moment.
+function trendsSearchPrompt(): string {
+  return [
+    'Use Google Search to find the CURRENT top worldwide trending topics on X (formerly Twitter) RIGHT NOW.',
+    'Check live trend aggregators such as rattibha.com/trends, getdaytrends.com and trends24.in (worldwide).',
+    'Return ONLY the 4 BIGGEST worldwide trends, most important first, ONE per line, each as its short trend name or hashtag (e.g. "#SuperBowl" or "Taylor Swift"). No numbering, no extra words, no explanation. Exactly 4 lines.',
+  ].join(NL)
+}
+
+// Post viral/fun sur une tendance X — SANS rapport avec $FRANC (pure visibilité).
+function xtrendPrompt(trend: string, facts: string): string {
+  const hasFacts = facts && facts.toUpperCase().indexOf('NONE') !== 0
+  return [
+    'You are a witty, culturally-aware social media writer. Write ONE viral, fun, highly shareable X (Twitter) post riding this CURRENT trend.',
+    '',
+    'TREND: ' + trend,
+    '',
+    'CONTEXT FOUND ONLINE:',
+    '---', hasFacts ? facts : '(rely on general knowledge of this trend)', '---',
+    '',
+    'RULES:',
+    '- ONE single post, 280 CHARACTERS MAXIMUM (hard limit).',
+    '- Genuinely funny/relatable/clever — the kind of post that gets likes & reposts. English.',
+    '- Ride the trend naturally. End with the trend hashtag + maybe 1 extra relevant hashtag.',
+    '- This is PURELY for visibility — do NOT mention $FRANC, crypto, Francis, roosters, or any brand. No promotion.',
+    '- A couple of emojis max. No markdown, no links.',
+    '- Keep it light and safe-for-work; avoid anything hateful, political-partisan or defamatory.',
+    '',
+    'Output ONLY the X post text, nothing else.',
+  ].join(NL)
+}
+
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram breaking-news message into natural, fluent FRENCH.',
@@ -166,13 +199,40 @@ Deno.serve(async (req: Request) => {
   const token = Deno.env.get('BOT_TOKEN')
   if (!token) return new Response('missing config', { status: 500 })
 
-  let category = '', subject = '', owner = 0
+  let category = '', subject = '', owner = 0, action = ''
   try {
     const body = await req.json()
     category = String((body && body.category) || '').toLowerCase()
     subject = String((body && body.subject) || '').trim()
     owner = Number((body && body.owner) || 0)
+    action = String((body && body.action) || '')
   } catch { /* corps invalide */ }
+
+  // /xtrend étape 1 : cherche les 4 tendances X mondiales et propose des boutons.
+  if (action === 'xtrend_list') {
+    if (!owner) return new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })
+    const bg = (async () => {
+      try {
+        const raw = await groundedSearch(trendsSearchPrompt())
+        // Une tendance par ligne ; on retire un éventuel puce/numéro en tête
+        // (mais PAS le # d'un hashtag).
+        const trends = (raw || '').split(NL)
+          .map((t) => t.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, '').trim())
+          .filter(Boolean).slice(0, 4)
+        if (trends.length === 0) { await tg(token, 'sendMessage', { chat_id: owner, text: '🔥 X Trends — impossible de récupérer les tendances pour le moment. Réessaie dans un instant.' }); return }
+        const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+        await supabase.from('xtrend_pending').upsert({ owner_id: owner, trends, created_at: new Date().toISOString() })
+        const kb = trends.map((t, i) => [{ text: '🔥 ' + t.slice(0, 60), callback_data: 'xt:' + i }])
+        await tg(token, 'sendMessage', {
+          chat_id: owner, parse_mode: 'HTML',
+          text: '🔥 <b>Top tendances X (monde)</b>\nChoisis-en une, je te rédige un post viral prêt à publier 👇',
+          reply_markup: { inline_keyboard: kb },
+        })
+      } catch (e) { console.error('xtrend_list', String(e)) }
+    })()
+    ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
+    return new Response('accepted', { status: 202 })
+  }
 
   const cat = CAT[category]
   if (!cat || !subject || !owner) return new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })
@@ -191,6 +251,23 @@ Deno.serve(async (req: Request) => {
         await tg(token, 'sendMessage', {
           chat_id: owner,
           text: '📤 <b>Annonce prête pour X</b>\n\n' + post + '\n\n<i>Touche « Publier sur X » pour ouvrir X avec le texte pré-rempli.</i>',
+          parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: xShareKeyboard(post),
+        })
+        return
+      }
+
+      // /xtrend étape 2 : post viral sur la tendance choisie (hors $FRANC),
+      // envoyé au owner avec un bouton « Publier sur X ». Clé en main.
+      if (category === 'xtrend') {
+        const facts = await groundedSearch(searchPrompt('trending topic', subject))
+        const post = await formatCall(xtrendPrompt(subject, facts))
+        if (!post || post.toUpperCase().indexOf('NONE') === 0) {
+          await tg(token, 'sendMessage', { chat_id: owner, text: '🔥 X Trend — impossible de rédiger. Réessaie ou choisis une autre tendance.' })
+          return
+        }
+        await tg(token, 'sendMessage', {
+          chat_id: owner,
+          text: '🔥 <b>Post viral prêt pour X</b>\n<i>Tendance : ' + subject.replace(/</g, '&lt;') + '</i>\n\n' + post + '\n\n<i>Touche « Publier sur X » pour ouvrir X avec le texte pré-rempli.</i>',
           parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: xShareKeyboard(post),
         })
         return

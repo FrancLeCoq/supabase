@@ -581,6 +581,25 @@ Deno.serve(async (req) => {
         return new Response('ok')
       }
 
+      // ── /xtrend : choix d'une tendance → post viral (OWNER) ──
+      if (cb.data.startsWith('xt:')) {
+        if (cbUser.id.toString() !== OWNER_ID) return new Response('ok')
+        const idx = Number(cb.data.split(':')[1])
+        const { data: row } = await cbSupa.from('xtrend_pending').select('trends').eq('owner_id', cbUser.id).maybeSingle()
+        const trends: string[] = (row && Array.isArray(row.trends)) ? row.trends : []
+        const trend = trends[idx]
+        if (!trend) { await sendMessage(cbToken, cbUser.id, '⚠️ Tendance introuvable (relance /xtrend).'); return new Response('ok') }
+        const cronSecret = Deno.env.get('CRON_SECRET') || ''
+        const trigger = fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/breaking-news', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+          body: JSON.stringify({ category: 'xtrend', subject: trend, owner: Number(cbUser.id) }),
+        }).catch((e) => console.error('xtrend gen:', String(e)))
+        ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
+        try { await cbSupa.from('xtrend_pending').delete().eq('owner_id', cbUser.id) } catch (_) { /* ok */ }
+        await sendMessage(cbToken, cbUser.id, `🔥 <b>${trend.replace(/</g, '&lt;')}</b> — ⏳ je rédige un post viral prêt à publier…`)
+        return new Response('ok')
+      }
+
       // ── Breaking news perso : ✅ Publier / ❌ Annuler (OWNER) ──
       if (cb.data === 'bn_pub' || cb.data === 'bn_cancel') {
         if (cbUser.id.toString() !== OWNER_ID) return new Response('ok')
@@ -924,6 +943,23 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
+    //  /xtrend (OWNER) — post viral prêt pour X sur une tendance mondiale.
+    //  Le bot cherche les 4 plus grosses tendances X, tu en choisis une, l'IA
+    //  rédige un post viral (hors $FRANC) + bouton « Publier sur X ». Clé en main.
+    // ══════════════════════════════════════════════════════════
+    if (text === '/xtrend') {
+      if (userId !== OWNER_ID) return new Response('ok')
+      const cronSecret = Deno.env.get('CRON_SECRET') || ''
+      const trigger = fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/breaking-news', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+        body: JSON.stringify({ action: 'xtrend_list', owner: Number(userId) }),
+      }).catch((e) => console.error('xtrend list:', String(e)))
+      ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
+      await sendMessage(token, chatId, '🔥 <b>X Trends</b> — ⏳ je cherche les plus grosses tendances mondiales…')
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  BREAKING NEWS perso (OWNER) — /f1 /motogp /worldroost /crypto + /x
     //  Le bot demande un SUJET, l'IA rédige (grounded) et envoie un APERÇU au
     //  owner → délègue à « breaking-news ».
@@ -987,7 +1023,7 @@ Deno.serve(async (req) => {
         `/F1course · /GPcourse — Course (GP)\n/F1we · /GPwe — Programme du week-end\n/F1news · /GPnews — Potins paddock\n\n` +
         `<b>3️⃣ Breaking news perso</b>\n` +
         `/f1 — Breaking news F1\n/motogp — Breaking news MotoGP\n/worldroost — Breaking news World Roost\n` +
-        `/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n\n` +
+        `/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n/xtrend — Post viral sur une tendance X\n\n` +
         `<b>4️⃣ Textes pour X</b>\n` +
         `/xf1 — Post X F1\n/xmotogp — Post X MotoGP\n/xcrypto — Post X Crypto\n` +
         `/xnews — Post X actu internationale\n/xfranc — Post X $FRANC (CA + liens)\n\n` +
