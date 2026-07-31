@@ -1030,7 +1030,7 @@ Deno.serve(async (req) => {
       await sendMessage(token, chatId,
         `🛠️ <b>Commandes disponibles</b>\n\n` +
         `<b>1️⃣ Setup (messages épinglés)</b>\n` +
-        `/setup — Menu principal\n/setupwallet — Topic Wallet\n/setupgames — Topic Games\n` +
+        `/setupwallet — Topic Wallet\n/setupgames — Topic Games\n` +
         `/setupchickencoop — The Chicken Coop (General)\n/setuphotwings — Topic Hot Wings\n` +
         `/setupcryptocoop — Topic Crypto Coop\n/setupworldroost — Topic World Roost\n/setuptrump — Topic Trump News\n\n` +
         `<b>2️⃣ Racing</b> (The Chicken Coop, EN + bouton 🇫🇷)\n` +
@@ -1582,13 +1582,13 @@ Deno.serve(async (req) => {
         `Find your way around:\n` +
         `💰 <b>Crypto Coop</b> — non-stop crypto news, decoded\n` +
         `📰 <b>World Roost</b> — the world's biggest stories, every day\n` +
+        `🇺🇸 <b>Trump News</b> — every Trump post first, so you're always a step ahead\n` +
         `🔥 <b>Hot Wings</b> — the spiciest must-read headlines\n` +
         `🏁 <b>Cocorico Racing</b> — F1 & MotoGP highlights, race by race\n` +
         `🎮 <b>Games</b> — play all of Francis' mini-games\n` +
-        `🌶️ <b>Backstage (Soon)</b> — the devs' spicy corner, coming soon\n` +
         `🔗 <b>Wallet</b> — connect & unlock the full experience\n\n` +
-        `👉 <b>Everything is free — you just need to be a holder!</b>\n` +
-        `💲 Hold just 1 $FRANC to unlock everything — it costs less than a cent!\n` +
+        `👉 <b>Everything is free in the Rooster Universe!</b>\n` +
+        `💲 Unlock exclusive features across all our games. Hold just 1 $FRANC to unlock everything — it costs less than a cent!\n` +
         `💲 Not a holder yet? Unlock everything with ⭐ Stars and get $FRANC cashback!\n\n` +
         `Have fun, be kind, and enjoy the coop! 🐔\n` +
         `🌐 Bilingual group: 🇬🇧🇫🇷 — write in English or French!`,
@@ -1603,13 +1603,13 @@ Deno.serve(async (req) => {
         `Repère-toi facilement :\n` +
         `💰 <b>Crypto Cocorico</b> — l'actu crypto en continu, décryptée\n` +
         `📰 <b>Le Chant du Monde</b> — les grandes actus internationales, chaque jour\n` +
+        `🇺🇸 <b>Trump News</b> — les posts du président américain en avant-première, pour ne rien louper et garder un coup d'avance\n` +
         `🔥 <b>Hot Wings</b> — l'actu hot à ne pas manquer\n` +
         `🏁 <b>Cocorico Racing</b> — F1 & MotoGP, les temps forts course après course\n` +
         `🎮 <b>Jeux</b> — des mini-jeux uniques à l'effigie du coq\n` +
-        `🔞 <b>Les Plumes Chaudes (bientôt)</b> — le contenu très hot des dev, à venir\n` +
         `🔗 <b>Portefeuille</b> — connecte-toi & débloque tout l'univers\n\n` +
-        `👉 <b>Tout est gratuit — il suffit d'être holder !</b>\n` +
-        `💲 Détiens seulement 1 $FRANC pour tout débloquer — moins d'un centime !\n` +
+        `👉 <b>Tout est gratuit dans l'univers du coq !</b>\n` +
+        `💲 Débloque de belles fonctionnalités exclusives dans l'ensemble de nos jeux. Détiens seulement 1 $FRANC pour tout débloquer — moins d'un centime !\n` +
         `💲 Pas encore holder ? Débloque tout avec des ⭐ Stars et reçois du cashback $FRANC !\n\n` +
         `Amuse-toi, sois sympa, et profite du groupe ! 🐔\n` +
         `🌐 Groupe bilingue : 🇬🇧🇫🇷 — écris en français ou en anglais !`,
@@ -1693,7 +1693,10 @@ Deno.serve(async (req) => {
         `👉 17:05 — 🚀 Cocorico Pump\n` +
         `👉 18:55 — Evening\n` +
         `👉 20:45 — Night wrap`,
-        [[{ text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }]]
+        [
+          [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
+          [{ text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }]
+        ]
       ,
         `💰 <b>Crypto Cocorico</b>\n\n` +
         `L'actu crypto en continu, décryptée pour tous : les gros mouvements de marché, la régulation, les ETF, les hacks et l'adoption — plus un « Cocorico Pump » quotidien sur le plus gros gagnant 24h, et un récap de fin de journée. 🐓\n\n` +
@@ -1704,7 +1707,10 @@ Deno.serve(async (req) => {
         `👉 17:05 — 🚀 Cocorico Pump\n` +
         `👉 18:55 — Soir\n` +
         `👉 20:45 — Récap du soir`,
-        [[{ text: '💰 $Franc sur SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc sur TON', url: BUY_FRANC_TON_URL }]]
+        [
+          [{ text: '🐔 Tous les jeux & univers Francis', url: MENU_DEEPLINK }],
+          [{ text: '💰 $Franc sur SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc sur TON', url: BUY_FRANC_TON_URL }]
+        ]
       )
       await sendMessage(token, chatId, tr('✅ Crypto Coop publié et épinglé dans les deux groupes.', '✅ Crypto Coop posted and pinned in both groups.'))
       return new Response('ok')
@@ -1726,7 +1732,10 @@ Deno.serve(async (req) => {
         `👉 16:10 — Cocorico Tech\n` +
         `👉 18:00 — The World Tonight\n` +
         `👉 21:40 — The Day in Review`,
-        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
+        [
+          [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
+          [{ text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc on TON', url: BUY_FRANC_TON_URL }]
+        ]
       ,
         `📰 <b>Le Chant du Monde</b>\n\n` +
         `Les grandes actus internationales, chaque jour, claires et à l'essentiel : géopolitique, économie, tech et le brief du soir — pour ne rien rater de ce qui compte. 🌍\n\n` +
@@ -1737,7 +1746,10 @@ Deno.serve(async (req) => {
         `👉 16:10 — Cocorico Tech\n` +
         `👉 18:00 — Le Monde ce Soir\n` +
         `👉 21:40 — L'actu du Jour en Bref`,
-        [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
+        [
+          [{ text: '🐔 Tous les jeux & univers Francis', url: MENU_DEEPLINK }],
+          [{ text: '💰 $Franc sur SOL', url: BUY_FRANC_SOL_URL }, { text: '💰 $Franc sur TON', url: BUY_FRANC_TON_URL }]
+        ]
       )
       await sendMessage(token, chatId, tr('✅ World Roost publié et épinglé dans les deux groupes.', '✅ World Roost posted and pinned in both groups.'))
       return new Response('ok')
