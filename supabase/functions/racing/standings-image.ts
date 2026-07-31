@@ -39,23 +39,35 @@ const FONT_URLS = [
   'https://cdn.jsdelivr.net/gh/googlefonts/roboto-2@main/src/hinted/Roboto-Regular.ttf',
   'https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans.ttf',
 ]
-let fontReady: Promise<Uint8Array | null> | null = null
-function ensureFont(): Promise<Uint8Array | null> {
-  if (!fontReady) {
-    fontReady = (async () => {
-      for (const url of FONT_URLS) {
-        try {
-          const res = await fetch(url)
-          if (!res.ok) continue
-          const buf = new Uint8Array(await res.arrayBuffer())
-          if (buf.length > 20000) return buf   // garde-fou : vraie police
-        } catch (_) { /* essaie la suivante */ }
-      }
-      console.error('resvg: aucune police chargée')
-      return null
+// Fonte grasse (indispensable : resvg ne synthétise PAS le gras, il faut la face).
+const BOLD_URLS = [
+  'https://cdn.jsdelivr.net/gh/google/fonts@main/apache/roboto/static/Roboto-Bold.ttf',
+  'https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.0.8/files/roboto-latin-700-normal.ttf',
+  'https://cdn.jsdelivr.net/gh/googlefonts/roboto-2@main/src/hinted/Roboto-Bold.ttf',
+  'https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans-Bold.ttf',
+]
+async function loadFirst(urls: string[]): Promise<Uint8Array | null> {
+  for (const url of urls) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) continue
+      const buf = new Uint8Array(await res.arrayBuffer())
+      if (buf.length > 20000) return buf   // garde-fou : vraie police
+    } catch (_) { /* essaie la suivante */ }
+  }
+  return null
+}
+let fontsReady: Promise<Uint8Array[] | null> | null = null
+// Renvoie [regular, bold] (bold optionnel). null si même la regular manque.
+function ensureFonts(): Promise<Uint8Array[] | null> {
+  if (!fontsReady) {
+    fontsReady = (async () => {
+      const [reg, bold] = await Promise.all([loadFirst(FONT_URLS), loadFirst(BOLD_URLS)])
+      if (!reg) { console.error('resvg: police regular introuvable'); return null }
+      return bold ? [reg, bold] : [reg]
     })()
   }
-  return fontReady
+  return fontsReady
 }
 
 // ── Couleurs d'écuries (badge = couleur officielle) ───────────
@@ -155,24 +167,46 @@ export function parseStandings(enText: string, kind: StKind): Row[] {
 function esc(s: string): string {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
-const MEDAL = ['#F4C542', '#C7CDD4', '#CD7F32'] // or / argent / bronze
+const MEDAL = ['#F5C542', '#CBD1D8', '#CE8946']       // or / argent / bronze
+const MEDAL_DARK = ['#B7860B', '#8B939C', '#8A5524']  // liserés
+// Étoile à 5 branches centrée (cx,cy).
+function star(cx: number, cy: number, r: number, fill: string): string {
+  const pts: string[] = []
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + i * Math.PI / 5
+    const rr = (i % 2) ? r * 0.42 : r
+    pts.push((cx + rr * Math.cos(ang)).toFixed(1) + ',' + (cy + rr * Math.sin(ang)).toFixed(1))
+  }
+  return `<polygon points="${pts.join(' ')}" fill="${fill}"/>`
+}
+// Petite médaille (rubans + disque + étoile) pour le podium, à côté du nom.
+function medal(cx: number, cy: number, rank: number): string {
+  const col = MEDAL[rank - 1], dk = MEDAL_DARK[rank - 1]
+  const p: string[] = []
+  p.push(`<rect x="${cx - 7}" y="${cy - 17}" width="4.5" height="15" rx="1.5" fill="#EF4444" transform="rotate(-14 ${cx - 5} ${cy - 10})"/>`)
+  p.push(`<rect x="${cx + 2.5}" y="${cy - 17}" width="4.5" height="15" rx="1.5" fill="#3B82F6" transform="rotate(14 ${cx + 5} ${cy - 10})"/>`)
+  p.push(`<circle cx="${cx}" cy="${cy + 3}" r="11.5" fill="${col}" stroke="${dk}" stroke-width="1.5"/>`)
+  p.push(star(cx, cy + 3, 6, dk))
+  return p.join('')
+}
 function buildSvg(rows: Row[], title: string, subtitle: string, isF1: boolean, showPoints: boolean): string {
   const hasSub = rows.some((r) => r.sub && r.sub.length > 0)
   const W = 780
   const padX = 20
-  const headH = 78
+  const headH = 96
   const rowH = hasSub ? 64 : 52   // lignes plus hautes si sous-titre (pilotes)
   const gap = 8
   const H = headH + rows.length * (rowH + gap) + 20
   const accent = isF1 ? '#E10600' : '#C8102E'
+  const nameX = padX + 72
+  const teamCx = 588             // colonne des badges d'écurie (centrés)
   const parts: string[] = []
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`)
   parts.push(`<rect width="${W}" height="${H}" rx="24" fill="#0B1220"/>`)
-  // Bandeau titre
-  parts.push(`<rect x="0" y="0" width="${W}" height="${headH}" rx="24" fill="#0B1220"/>`)
-  parts.push(`<rect x="${padX}" y="34" width="6" height="30" rx="3" fill="${accent}"/>`)
-  parts.push(`<text x="${padX + 20}" y="50" fill="#FFFFFF" font-size="30" font-weight="700">${esc(title)}</text>`)
-  parts.push(`<text x="${padX + 20}" y="70" fill="#93A3B8" font-size="16">${esc(subtitle)}</text>`)
+  // Bandeau titre : centré, plus gros et gras.
+  parts.push(`<rect x="${W / 2 - 26}" y="26" width="52" height="4" rx="2" fill="${accent}"/>`)
+  parts.push(`<text x="${W / 2}" y="60" fill="#FFFFFF" font-size="34" font-weight="700" text-anchor="middle">${esc(title)}</text>`)
+  parts.push(`<text x="${W / 2}" y="84" fill="#AEB9C9" font-size="19" font-weight="700" text-anchor="middle">${esc(subtitle)}</text>`)
 
   let y = headH
   for (const r of rows) {
@@ -181,31 +215,35 @@ function buildSvg(rows: Row[], title: string, subtitle: string, isF1: boolean, s
     parts.push(`<rect x="${padX}" y="${y}" width="${W - padX * 2}" height="${rowH}" rx="12" fill="${rowBg}"/>`)
     // Barre couleur écurie (accent gauche)
     parts.push(`<rect x="${padX}" y="${y}" width="7" height="${rowH}" rx="3" fill="${st.bg}"/>`)
-    // Pastille position (médaille pour le podium)
+    // Pastille position (neutre pour tous ; le podium est marqué par la médaille)
     const cx = padX + 40, cy = y + rowH / 2
-    const posBg = r.pos <= 3 ? MEDAL[r.pos - 1] : '#1E293B'
-    const posFg = r.pos <= 3 ? '#111111' : '#E2E8F0'
-    parts.push(`<circle cx="${cx}" cy="${cy}" r="17" fill="${posBg}"/>`)
-    parts.push(`<text x="${cx}" y="${cy + 6}" fill="${posFg}" font-size="18" font-weight="700" text-anchor="middle">${r.pos}</text>`)
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="17" fill="#1E293B"/>`)
+    parts.push(`<text x="${cx}" y="${cy + 6}" fill="#E2E8F0" font-size="18" font-weight="400" text-anchor="middle">${r.pos}</text>`)
+    // Nom + (médaille du podium à droite du nom)
+    const nameY = (r.sub && r.sub.length > 0) ? (cy - 2) : (cy + 7)
+    const nameFs = 22
     if (r.sub && r.sub.length > 0) {
-      // Ligne constructeur : nom (grand) + pilotes titulaires (petit) dessous.
-      parts.push(`<text x="${padX + 72}" y="${cy - 2}" fill="#F8FAFC" font-size="22" font-weight="700">${esc(r.name)}</text>`)
-      parts.push(`<text x="${padX + 72}" y="${cy + 19}" fill="#93A3B8" font-size="15" font-weight="500">${esc(r.sub)}</text>`)
+      parts.push(`<text x="${nameX}" y="${nameY}" fill="#F8FAFC" font-size="${nameFs}" font-weight="700">${esc(r.name)}</text>`)
+      parts.push(`<text x="${nameX}" y="${cy + 19}" fill="#9AA6B8" font-size="15" font-weight="400">${esc(r.sub)}</text>`)
     } else {
-      // Nom du pilote
-      parts.push(`<text x="${padX + 72}" y="${cy + 7}" fill="#F8FAFC" font-size="22" font-weight="600">${esc(r.name)}</text>`)
-      // Badge écurie (pastille colorée avec le nom court)
+      parts.push(`<text x="${nameX}" y="${nameY}" fill="#F8FAFC" font-size="${nameFs}" font-weight="400">${esc(r.name)}</text>`)
+      // Badge écurie (pastille colorée, CENTRÉE sur la colonne)
       const label = st.short || r.team
       if (label) {
         const bw = Math.min(150, 22 + label.length * 10)
-        const bx = showPoints ? (W - padX - 92 - bw) : (W - padX - 16 - bw)
-        parts.push(`<rect x="${bx}" y="${y + rowH / 2 - 15}" width="${bw}" height="30" rx="15" fill="${st.bg}"/>`)
-        parts.push(`<text x="${bx + bw / 2}" y="${cy + 5}" fill="${st.fg}" font-size="15" font-weight="700" text-anchor="middle">${esc(label)}</text>`)
+        const bx = teamCx - bw / 2
+        parts.push(`<rect x="${bx}" y="${cy - 15}" width="${bw}" height="30" rx="15" fill="${st.bg}"/>`)
+        parts.push(`<text x="${teamCx}" y="${cy + 5}" fill="${st.fg}" font-size="15" font-weight="700" text-anchor="middle">${esc(label)}</text>`)
       }
     }
-    // Points (alignés à droite)
+    if (r.pos <= 3) {
+      const estW = r.name.length * (nameFs * 0.52)
+      const mY = (r.sub && r.sub.length > 0) ? (y + 22) : cy
+      parts.push(medal(nameX + estW + 20, mY, r.pos))
+    }
+    // Points (alignés à droite, en GRAS)
     if (showPoints && r.points) {
-      parts.push(`<text x="${W - padX - 16}" y="${cy + 7}" fill="#FFFFFF" font-size="22" font-weight="800" text-anchor="end">${esc(r.points)}<tspan fill="#93A3B8" font-size="14" font-weight="600"> p</tspan></text>`)
+      parts.push(`<text x="${W - padX - 16}" y="${cy + 7}" fill="#FFFFFF" font-size="23" font-weight="700" text-anchor="end">${esc(r.points)}<tspan fill="#9AA6B8" font-size="14" font-weight="400"> p</tspan></text>`)
     }
     y += rowH + gap
   }
@@ -220,15 +258,15 @@ export async function renderStandingsPng(
   try {
     const rows = parseStandings(enText, kind)
     if (rows.length < 3) return null // pas assez de lignes exploitables
-    const [ok, font] = await Promise.all([ensureWasm(), ensureFont()])
-    if (!ok || !font) return null
+    const [ok, fonts] = await Promise.all([ensureWasm(), ensureFonts()])
+    if (!ok || !fonts) return null
     const title = sportShort
     const showPoints = kind === 'we' || kind === 'constructors'
     const svg = buildSvg(rows, title, subtitle, isF1, showPoints)
     const resvg = new Resvg(svg, {
       background: '#0B1220',
       fitTo: { mode: 'width', value: 1120 }, // haute résolution -> texte net
-      font: { fontBuffers: [font], defaultFontFamily: 'Roboto', loadSystemFonts: false },
+      font: { fontBuffers: fonts, defaultFontFamily: 'Roboto', loadSystemFonts: false },
     })
     const png = resvg.render().asPng()
     return png

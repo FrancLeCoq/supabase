@@ -217,7 +217,7 @@ async function sendPhotoBytes(token: string, chatId: number, png: Uint8Array, th
     form.append('chat_id', String(chatId))
     if (threadId) form.append('message_thread_id', String(threadId))
     form.append('photo', new Blob([png], { type: 'image/png' }), 'standings.png')
-    if (caption) { form.append('caption', caption); form.append('parse_mode', 'HTML') }
+    if (caption) form.append('caption', caption)   // texte brut (comme les posts racing)
     if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup))
     const res = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', body: form }, 20000)
     const data = await res.json()
@@ -225,6 +225,47 @@ async function sendPhotoBytes(token: string, chatId: number, png: Uint8Array, th
     return Number(data.result && data.result.message_id) || 0
   } catch (e) { console.error('racing sendPhoto exception', String(e)); return 0 }
 }
+// Upload du PNG vers un bucket public (pour le bouton « Enreg. Classement »).
+let bucketReady: Promise<void> | null = null
+function ensureBucket(base: string, key: string): Promise<void> {
+  if (!bucketReady) {
+    bucketReady = (async () => {
+      try {
+        await tfetch(base + '/storage/v1/bucket', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + key, apikey: key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'classements', name: 'classements', public: true }),
+        }, 10000)
+      } catch (_) { /* existe déjà / ignore */ }
+    })()
+  }
+  return bucketReady
+}
+async function uploadPng(png: Uint8Array): Promise<string> {
+  const base = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!base || !key) return ''
+  try {
+    await ensureBucket(base, key)
+    const path = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.png'
+    const up = await tfetch(base + '/storage/v1/object/classements/' + path, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + key, apikey: key, 'Content-Type': 'image/png', 'x-upsert': 'true' }, body: png,
+    }, 15000)
+    if (up.ok) return base + '/storage/v1/object/public/classements/' + path
+    console.error('uploadPng', up.status, (await up.text()).slice(0, 140))
+  } catch (e) { console.error('uploadPng exc', String(e)) }
+  return ''
+}
+// DM au owner : le PNG du classement + 2 boutons côte à côte
+// [📥 Enreg. Classement] (ouvre le PNG public → appui long = sauvegarde galerie)
+// [📤 Publier sur X] (texte pré-rempli ; l'image s'ajoute manuellement).
+async function ownerClassementDM(token: string, png: Uint8Array, caption: string, xText: string): Promise<void> {
+  try {
+    const url = await uploadPng(png)
+    const publier = { text: '📤 Publier sur X', url: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(xText) }
+    const row = url ? [{ text: '📥 Enreg. Classement', url }, publier] : [publier]
+    await sendPhotoBytes(token, OWNER_ID, png, 0, caption, { inline_keyboard: [row] })
+  } catch (e) { console.error('ownerClassementDM', String(e)) }
+}
+
 // Sessions dont le classement s'affiche en PNG (et disparaît du texte).
 const IMG_CFG: Partial<Record<RType, { kind: StKind; subtitle: string }>> = {
   we: { kind: 'we', subtitle: 'World Championship' },
@@ -244,17 +285,8 @@ function stripStandings(text: string): string {
   })
   return kept.join(NL).replace(/\n{3,}/g, NL + NL).trim()
 }
-// Génère + envoie le PNG du classement pour les sessions concernées. Best-effort.
-async function maybeSendStandingsImage(token: string, enText: string, type: RType, isF1: boolean, sportShort: string): Promise<void> {
-  const cfg = IMG_CFG[type]
-  if (!cfg) return
-  try {
-    const png = await renderStandingsPng(enText, cfg.kind, isF1, sportShort, cfg.subtitle)
-    if (png && png.length > 0) await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN)
-  } catch (e) { console.error('racing standings image', String(e)) }
-}
 // /F1constructeurs /GPconstructeurs : classement constructeurs en PNG UNIQUEMENT.
-// Posté sur Cocorico Racing + DM au owner avec bouton « Publier sur X ».
+// Posté sur Cocorico Racing + DM au owner avec boutons Enreg./Publier sur X.
 async function runConstructors(token: string, isF1: boolean, sportShort: string, sportEmoji: string): Promise<void> {
   const sportLong = isF1 ? 'Formula 1' : 'MotoGP'
   const facts = await groundedSearch(searchPrompt(sportLong, 'constructeurs'))
@@ -273,12 +305,12 @@ async function runConstructors(token: string, isF1: boolean, sportShort: string,
     return
   }
   const caption = sportEmoji + ' ' + sportShort + ' — Classement constructeurs 🏆'
-  // 1) Cocorico Racing : le PNG (image uniquement).
+  // 1) Cocorico Racing : le PNG (image uniquement, avec un titre en légende).
   await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN, caption)
-  // 2) DM owner : le même PNG + bouton « Publier sur X » (texte pré-rempli).
+  // 2) DM owner : le même PNG + [📥 Enreg. Classement | 📤 Publier sur X].
   const tag = isF1 ? '#F1 #Formula1' : '#MotoGP'
   const xText = sportEmoji + ' ' + sportShort + " Constructors' Championship 🏁" + NL + NL + tag
-  await sendPhotoBytes(token, OWNER_ID, png, 0, caption, xShareKeyboard(xText))
+  await ownerClassementDM(token, png, caption, xText)
 }
 
 // Raccourcit les noms d'écuries trop longs (garanti, en plus de la consigne IA).
@@ -321,19 +353,30 @@ async function runCommand(token: string, command: string): Promise<void> {
   const frOk = frFull && frFull.toUpperCase().indexOf('NONE') !== 0
   // Pour les sessions à classement : le classement sort du texte (il ne vit plus
   // qu'en PNG) ; on ne garde que le préambule. Sinon on affiche le texte tel quel.
-  const hasImg = !!IMG_CFG[type]
-  const enDisp = hasImg ? stripStandings(enFull) : enFull
-  const frDisp = hasImg ? stripStandings(frFull) : frFull
+  const cfg = IMG_CFG[type]
+  const enDisp = cfg ? stripStandings(enFull) : enFull
+  const frDisp = cfg ? stripStandings(frFull) : frFull
   if (enOk) {
     const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + weSuffix + headSep + enDisp
     const frMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + headSep + frDisp
-    const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN, NLANG_BTN)
-    if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
-    if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
-    // Classement en image : texte (préambule) d'abord, PNG du classement juste après.
-    await maybeSendStandingsImage(token, enFull, type, isF1, sportShort)
-    // Copie EN -> owner (pour coller sur X). Sans lien (CTA en commentaire via /xf1…).
-    await dmOwnerCopy(token, enMsg)
+    // Rendu du classement en PNG (le cas échéant).
+    const png = cfg ? await renderStandingsPng(enFull, cfg.kind, isF1, sportShort, cfg.subtitle) : null
+    if (png && png.length > 0 && enMsg.length <= 1000) {
+      // POST UNIQUE : image + préambule en légende + bouton FR ; épinglé si /we.
+      // (Le classement ne vit qu'en PNG ; la légende porte le préambule + toggle.)
+      const idEn = await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN, enMsg, NLANG_BTN)
+      if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
+      if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
+      // DM owner : PNG + [📥 Enreg. Classement | 📤 Publier sur X].
+      await ownerClassementDM(token, png, enMsg, enMsg)
+    } else {
+      // Repli : texte seul + image séparée (best-effort) + copie owner texte.
+      const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN, NLANG_BTN)
+      if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
+      if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
+      if (png && png.length > 0) { await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN); await ownerClassementDM(token, png, enMsg, enMsg) }
+      else await dmOwnerCopy(token, enMsg)
+    }
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
   if (!enOk && !frOk) {
@@ -374,9 +417,11 @@ Deno.serve(async (req: Request) => {
     const sportShort = isF1 ? 'F1' : 'MotoGP'
     const type = (command.replace('f1', '').replace('gp', '') || 'we') as RType
     const kind: StKind = type === 'constructeurs' ? 'constructors' : (type === 'course' ? 'course' : 'we')
+    const subtitle = kind === 'we' ? 'World Championship' : kind === 'constructors' ? "Constructors' Championship" : 'Race classification'
     const rows = parseStandings(probeEn, kind)
-    const png = await renderStandingsPng(probeEn, kind, isF1, sportShort, 'Probe')
-    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, rows: rows.slice(0, 3), pngBytes: png ? png.length : 0 }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    const png = await renderStandingsPng(probeEn, kind, isF1, sportShort, subtitle)
+    const url = png ? await uploadPng(png) : ''
+    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, pngBytes: png ? png.length : 0, url }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   if (!VALID.has(command)) return new Response(JSON.stringify({ error: 'unknown command', command }), { status: 400, headers: { 'Content-Type': 'application/json' } })
