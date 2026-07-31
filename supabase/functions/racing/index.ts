@@ -18,7 +18,7 @@
 //  Securite : header x-cron-secret == CRON_SECRET.
 // ================================================================
 
-import { renderStandingsPng, parseStandings, isStandingLine, type StKind } from './standings-image.ts'
+import { renderStandingsPng, parseStandings, isStandingLine, fontCount, type StKind } from './standings-image.ts'
 
 const NL = String.fromCharCode(10)
 
@@ -421,7 +421,8 @@ Deno.serve(async (req: Request) => {
     const rows = parseStandings(probeEn, kind)
     const png = await renderStandingsPng(probeEn, kind, isF1, sportShort, subtitle)
     const url = png ? await uploadPng(png) : ''
-    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, pngBytes: png ? png.length : 0, url }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    const faces = await fontCount()
+    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, pngBytes: png ? png.length : 0, fontFaces: faces, url }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   if (!VALID.has(command)) return new Response(JSON.stringify({ error: 'unknown command', command }), { status: 400, headers: { 'Content-Type': 'application/json' } })

@@ -251,6 +251,9 @@ function buildSvg(rows: Row[], title: string, subtitle: string, isF1: boolean, s
   return parts.join('')
 }
 
+// Diagnostic : nombre de faces de police chargées (2 = regular + bold).
+export async function fontCount(): Promise<number> { const f = await ensureFonts(); return f ? f.length : 0 }
+
 // ── API publique : renvoie le PNG (ou null si indispo) ────────
 export async function renderStandingsPng(
   enText: string, kind: StKind, isF1: boolean, sportShort: string, subtitle: string,
