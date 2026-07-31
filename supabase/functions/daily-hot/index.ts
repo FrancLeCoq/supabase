@@ -17,7 +17,7 @@
 //  AVEC la photo de l'article. Ton taquin mais SOBRE (rien d'explicite).
 //
 //  Diffusion : EN d'abord -> "The Chicken Coop" Hot (1488),
-//  puis traduction FR -> "Le Poulailler" Hot (33). Limite 240 caracteres.
+//  Golden Rooster uniquement, EN + bouton « Translate in French ».
 //
 //  Securite : header x-cron-secret == CRON_SECRET.
 // ================================================================
@@ -375,7 +375,7 @@ Deno.serve(async (req: Request) => {
       const img = result.image
       // Hot news EXCLUSIVEMENT dans le groupe privé (Golden Rooster / General),
       // par défaut en anglais + bouton 🇬🇧/🇫🇷 PRÉ-ENREGISTRÉ (bascule instantanée,
-      // sans appel Gemini). Plus AUCUN envoi dans The Chicken Coop ni Le Poulailler.
+      // sans appel Gemini). Uniquement dans Golden Rooster.
       const en = result.text
       const fr = await translateToFrench(en)
       await postI18n(botToken, GR_CHAT_ID, GR_THREAD_HOT, img, 'en', en, fr || en)

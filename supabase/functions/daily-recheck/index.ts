@@ -28,14 +28,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SPICY_GROUP_ID = -1003962771717        // groupe privé Spicy = Golden Rooster (#General)
-const CHICKEN_COOP = -1003842240104          // The Chicken Coop (EN)
-const POULAILLER_FR = -1004352289820         // Le Poulailler (FR)
+const CHICKEN_COOP = -1003842240104          // The Chicken Coop (groupe bilingue unique)
 const SPICY_DEEPLINK = 'https://t.me/FrancisLeCoqBot?start=spicy'
 const OWNER_ID = '6593812300'
 
-// Liens publics des deux groupes « passerelle ».
-const COOP_URL = 't.me/LeCoqFrancis'         // The Chicken Coop 🇺🇸
-const POUL_URL = 't.me/FrancisLeCoq'         // Le Poulailler 🇫🇷
+// Lien public du groupe « passerelle » (The Chicken Coop).
+const COOP_URL = 't.me/LeCoqFrancis'
 
 // Sursis (jours) avant expulsion. L'expulsion a lieu à 10h (heure de Paris).
 // Seule la DATE d'échéance est comparée (l'heure exacte de passage varie avec

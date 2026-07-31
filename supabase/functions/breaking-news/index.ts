@@ -213,9 +213,9 @@ Deno.serve(async (req: Request) => {
       const preview =
         '🚨 <b>Breaking news — ' + cat.emoji + ' ' + cat.label + '</b>\n' +
         '<i>Sujet : ' + subject.replace(/</g, '&lt;') + '</i>\n\n' +
-        '🇬🇧 <b>The Chicken Coop</b>\n' + en + '\n\n' +
-        '🇫🇷 <b>Le Poulailler</b>\n' + fr + '\n\n' +
-        'Publier dans les deux groupes ?'
+        '🇬🇧 <b>EN (par défaut)</b>\n' + en + '\n\n' +
+        '🇫🇷 <b>FR (bouton « Translate »)</b>\n' + fr + '\n\n' +
+        'Publier dans The Chicken Coop ?'
       await tg(token, 'sendMessage', {
         chat_id: owner, text: preview, parse_mode: 'HTML', disable_web_page_preview: true,
         reply_markup: { inline_keyboard: [[

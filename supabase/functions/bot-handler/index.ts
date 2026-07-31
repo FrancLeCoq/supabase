@@ -181,25 +181,40 @@ async function handleFrToggle(o: {
   token: string; chatId: number; messageId: number; isCaption: boolean; html: boolean;
   lang: string; enText: string; frText: string; enRows: any[]; frRows: any[]; frCb: string; enCb: string;
 }) {
-  const editBody = async (txt: string, kb: any[]) => {
+  // editBody renvoie true si Telegram accepte l'édition (pour fiabiliser le retour EN).
+  const editBody = async (txt: string, kb: any[]): Promise<boolean> => {
     const method = o.isCaption ? 'editMessageCaption' : 'editMessageText'
     const p: any = { chat_id: o.chatId, message_id: o.messageId, reply_markup: { inline_keyboard: kb } }
     if (o.html) p.parse_mode = 'HTML'
     if (o.isCaption) p.caption = txt; else { p.text = txt; p.disable_web_page_preview = true }
-    await fetch(`https://api.telegram.org/bot${o.token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${o.token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+      const j = await res.json().catch(() => null)
+      return !!(j && j.ok)
+    } catch (_) { return false }
   }
   if (o.lang === 'en') { await editBody(o.enText, [...o.enRows, translateRow(o.frCb)]); return }
-  // FR : on montre le français + décompte, puis retour auto à l'anglais.
+  // FR : on montre le français + décompte, puis retour AUTO à l'anglais.
   await editBody(o.frText, [...o.frRows, backRow(o.enCb, FR_PEEK_SECONDS)])
   const setBtn = async (kb: any[]) => {
-    await fetch(`https://api.telegram.org/bot${o.token}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: o.chatId, message_id: o.messageId, reply_markup: { inline_keyboard: kb } }) })
+    try {
+      await fetch(`https://api.telegram.org/bot${o.token}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: o.chatId, message_id: o.messageId, reply_markup: { inline_keyboard: kb } }) })
+    } catch (_) { /* un tick qui échoue ne doit PAS casser le décompte */ }
   }
   const bg = (async () => {
-    try {
-      for (let s = FR_PEEK_SECONDS - 1; s >= 1; s--) { await peekSleep(1000); await setBtn([...o.frRows, backRow(o.enCb, s)]) }
-      await peekSleep(1000)
-      await editBody(o.enText, [...o.enRows, translateRow(o.frCb)])
-    } catch (_) { /* message supprimé / trop ancien : on ignore */ }
+    // Décompte par pas de 2 s (≈10 éditions au lieu de ~20) → évite le 429 Telegram.
+    let s = FR_PEEK_SECONDS
+    while (s > 0) {
+      const step = s >= 2 ? 2 : 1
+      await peekSleep(step * 1000)
+      s -= step
+      if (s > 0) await setBtn([...o.frRows, backRow(o.enCb, s)])
+    }
+    // Retour à l'anglais GARANTI : plusieurs tentatives si Telegram limite (429).
+    for (let a = 0; a < 5; a++) {
+      if (await editBody(o.enText, [...o.enRows, translateRow(o.frCb)])) break
+      await peekSleep(1500)
+    }
   })()
   ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
 }
@@ -1597,7 +1612,7 @@ Deno.serve(async (req) => {
         `Chaque post <b>original</b> de Donald J. Trump sur Truth Social, recopié ici automatiquement — texte, photos & vidéos — en quelques minutes. 🦅\n\n` +
         `💰 Trump voulait faire payer jusqu'à <b>100 000 $/mois</b> pour accéder en primeur à ses posts.\n` +
         `Nous l'avons recréé nous-mêmes — et ici, c'est <b>100% GRATUIT</b>.\n` +
-        `<b>C'est ça, l'esprit du poulailler.</b> 🐔\n\n` +
+        `<b>C'est ça, l'esprit de la basse-cour.</b> 🐔\n\n` +
         `<i>Les reposts (RT) sont ignorés — uniquement ses posts originaux.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )

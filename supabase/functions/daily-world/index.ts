@@ -18,8 +18,8 @@
 //    * wr_evening  Le Monde ce Soir          (actu internationale 12h)
 //    * wr_night    L'actu du Jour en Bref    (recap + vigilance + a surveiller)
 //
-//  Diffusion : FR d'abord -> "Le Poulailler" Actu generale (45),
-//  puis traduction EN -> "The Chicken Coop" World Roost (1489).
+//  Diffusion : The Chicken Coop, World Roost (1489), EN par defaut
+//  + bouton « Translate in French » (FR pre-enregistre).
 //  Limites : 235 caracteres (rubriques), 500 (bilan).
 //
 //  Securite : header x-cron-secret == CRON_SECRET.
@@ -34,8 +34,6 @@ const FORMAT_MODEL = 'gemini-3.1-flash-lite'
 const AI_TIMEOUT_MS = 40000
 
 // -- Telegram : groupes & topics -------------------------------
-const FR_CHAT_ID = -1004352289820   // "Le Poulailler" (francophone)
-const FR_THREAD_WORLD = 45          // topic FR "Actu generale"
 const WORLD_THREAD_EN = 1489        // topic EN "World Roost"
 
 // -- Bandeaux (bucket public "assets") -------------------------

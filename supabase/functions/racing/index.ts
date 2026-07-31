@@ -10,11 +10,10 @@
 //       2.5 LE MOINS SOLLICITE par l'automatique : gemini-2.5-flash
 //       (fallback gemini-2.5-flash-lite). 1 seul appel 2.5 par commande.
 //    B) MISE EN FORME finale : gemini-3.1-flash-lite (quota large) —
-//       une version ANGLAISE (The Chicken Coop) et une FRANCAISE
-//       (Le Poulailler), a partir des MEMES faits.
+//       The Chicken Coop, EN par defaut + bouton « Translate in French ».
+//       (FR pre-enregistre, meme mecanique que les daily).
 //
-//  Diffusion : EN -> The Chicken Coop, topic "Cocorico Racing" (1631) ;
-//              FR -> Le Poulailler, topic "Cocorico Racing" (147).
+//  Diffusion : The Chicken Coop, topic "Cocorico Racing" (1631).
 //
 //  Securite : header x-cron-secret == CRON_SECRET.
 // ================================================================
@@ -30,8 +29,6 @@ const AI_TIMEOUT_MS = 40000
 // Telegram
 const COOP_CHAT_ID = Number(Deno.env.get('FACT_CHAT_ID') ?? '-1003842240104') // The Chicken Coop (EN)
 const RACING_THREAD_EN = 1631
-const FR_CHAT_ID = -1004352289820   // Le Poulailler
-const RACING_THREAD_FR = 147
 const OWNER_ID = 6593812300         // DM du owner en cas d'echec
 // Le lien "rejoins le poulailler" n'est PLUS collé dans la copie owner (le lien
 // t.me dans un post X provoque un shadowban) : il se met en commentaire du post

@@ -19,7 +19,7 @@
 //    * night   20:30 UTC   🌙 Crypto Night (récap du jour)
 //
 //  Diffusion : EN d'abord -> " The Chicken Coop " Crypto Coop (1490),
-//  puis traduction FR -> " Le Poulailler " Crypto Cocorico (43).
+//  La version FR est accessible via le bouton « Translate » du message.
 //
 //  Sécurité : header x-cron-secret == CRON_SECRET.
 // ================================================================
@@ -34,8 +34,6 @@ const FORMAT_MODEL = 'gemini-3.1-flash-lite'
 const AI_TIMEOUT_MS = 40000
 
 // -- Telegram : groupes & topics -------------------------------
-const FR_CHAT_ID = -1004352289820   // " Le Poulailler " (francophone)
-const FR_THREAD_CRYPTO = 43         // topic FR " Crypto Cocorico "
 const CRYPTO_THREAD_EN = 1490       // topic EN " Crypto Coop "
 
 // -- Bandeaux (bucket public "assets") -------------------------

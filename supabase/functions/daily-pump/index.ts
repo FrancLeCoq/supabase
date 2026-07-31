@@ -22,8 +22,6 @@ const SEARCH_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash']
 const FORMAT_MODEL = 'gemini-3.1-flash-lite'
 const AI_TIMEOUT_MS = 40000
 
-const FR_CHAT_ID = -1004352289820
-const FR_THREAD_CRYPTO = 43
 const CRYPTO_THREAD_EN = 1490
 
 const FRANC_MINT_SOL = 'AacckLUizxHFpSGdcN9ppEfv2UCbdqZspEhHeR8Gpump'

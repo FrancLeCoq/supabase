@@ -12,7 +12,6 @@
 //   • anti-flood : seuls les posts des WINDOW_MIN dernières minutes.
 //   • anti-doublon : verrou DB par ID de post (claim_reply_slot).
 //   • EN (texte+média) -> The Chicken Coop (topic 2115)
-//     FR (traduction)  -> Le Poulailler       (topic 519)
 //
 //  Polling : pg_cron toutes les ~3 min (Truth Social/trumpstruth ne
 //  poussent pas de webhook -> on interroge).
@@ -125,7 +124,7 @@ async function translateFR(text: string): Promise<string> {
 
 // -- Telegram --------------------------------------------------
 // En-tête daté, dans la langue du groupe (heure de Paris). Le Coop (EN) reçoit
-// un format anglais/US, le Poulailler (FR) un format français.
+// un format anglais/US (The Chicken Coop).
 function headerEN(t: number): string {
   const d = new Date(t)
   const date = d.toLocaleDateString('en-US', { timeZone: 'Europe/Paris' })

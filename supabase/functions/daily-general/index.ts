@@ -12,7 +12,7 @@
 //  (500 RPD, pas de grounding = tres peu de quota).
 //
 //  Diffusion : dans LES DEUX groupes, topic "General" (sans thread) :
-//    EN -> The Chicken Coop   FR -> Le Poulailler
+//    The Chicken Coop (General), EN + bouton « Translate in French ».
 //
 //  Securite : header x-cron-secret == CRON_SECRET.
 // ================================================================
@@ -20,7 +20,6 @@
 const NL = String.fromCharCode(10)
 
 const FORMAT_MODEL = 'gemini-3.1-flash-lite'
-const FR_CHAT_ID = -1004352289820   // Le Poulailler (francophone)
 
 function geminiUrl(model: string): string {
   const key = Deno.env.get('GEMINI_API_KEY') || ''

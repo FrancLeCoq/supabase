@@ -16,7 +16,6 @@
 
 const NL = String.fromCharCode(10)
 const GEN_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite']
-const FR_CHAT_ID = -1004352289820
 
 const DID_YOU_KNOW_PROMPT = `You write ONE short, punchy "Did you know?" message for the Telegram community of $FRANC, a fun community memecoin built around Francis the rooster. You have lots of freedom in the HOOK (how you start) - BUT every single message MUST end on a clever, NATURAL link to $FRANC or the $FRANC universe. That tie-in is the whole point: an interesting fact that does NOT connect back to $FRANC is a FAILURE.
 
