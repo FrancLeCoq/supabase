@@ -21,7 +21,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const NL = String.fromCharCode(10)
-const FORMAT_MODEL = 'gemini-3.1-flash-lite'
+// Traduction : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const FORMAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 const FEED = 'https://trumpstruth.org/feed'
 const COOP_CHAT = -1003842240104, COOP_THREAD = 2115   // The Chicken Coop (EN)
 const POUL_CHAT = -1004352289820, POUL_THREAD = 519    // Le Poulailler (FR)
@@ -110,16 +111,20 @@ async function translateFR(text: string): Promise<string> {
     'Output ONLY the French translation.',
     '', text,
   ].join(NL)
-  try {
-    const res = await tfetch('https://generativelanguage.googleapis.com/v1beta/models/' + FORMAT_MODEL + ':generateContent?key=' + key, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
-    }, 25000)
-    if (!res.ok) return ''
-    const data = await res.json()
-    const parts = data?.candidates?.[0]?.content?.parts ?? []
-    return parts.map((p: any) => (p && p.text) ? p.text : '').join('').trim()
-  } catch { return '' }
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+      }, 25000)
+      if (res.status === 429 || !res.ok) continue
+      const data = await res.json()
+      const parts = data?.candidates?.[0]?.content?.parts ?? []
+      const out = parts.map((p: any) => (p && p.text) ? p.text : '').join('').trim()
+      if (out) return out
+    } catch { /* modèle suivant */ }
+  }
+  return ''
 }
 
 // -- Telegram --------------------------------------------------

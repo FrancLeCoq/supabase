@@ -9,7 +9,7 @@
 //    A) RECHERCHE grounded (Google Search), en ANGLAIS, sur le modele
 //       2.5 LE MOINS SOLLICITE par l'automatique : gemini-2.5-flash
 //       (fallback gemini-2.5-flash-lite). 1 seul appel 2.5 par commande.
-//    B) MISE EN FORME finale : gemini-3.1-flash-lite (quota large) —
+//    B) MISE EN FORME finale : gemini-3.5-flash-lite (repli 3.1-flash-lite) —
 //       The Chicken Coop, EN par defaut + bouton « Translate in French ».
 //       (FR pre-enregistre, meme mecanique que les daily).
 //
@@ -25,7 +25,8 @@ const NL = String.fromCharCode(10)
 // Recherche grounded : 2.5-flash en primaire (le moins charge par
 // l'auto : ~5/j vs ~6/j pour le lite), repli sur 2.5-flash-lite.
 const SEARCH_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
-const FORMAT_MODEL = 'gemini-3.1-flash-lite'
+// Mise en forme/traduction : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const FORMAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 const AI_TIMEOUT_MS = 40000
 
 // Telegram
@@ -84,15 +85,20 @@ async function groundedSearch(prompt: string): Promise<string> {
   return ''
 }
 async function formatCall(prompt: string): Promise<string> {
-  try {
-    const res = await tfetch(geminiUrl(FORMAT_MODEL), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
-    }, 25000)
-    if (!res.ok) { console.error('racing formatCall HTTP', res.status); return '' }
-    return extractText(await res.json())
-  } catch (e) { console.error('racing formatCall exception', String(e)); return '' }
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+      }, 25000)
+      if (res.status === 429) { console.warn('racing formatCall 429 ' + model); continue }
+      if (!res.ok) { console.error('racing formatCall HTTP', res.status, model); continue }
+      const out = extractText(await res.json())
+      if (out) return out
+    } catch (e) { console.error('racing formatCall exception', model, String(e)) }
+  }
+  return ''
 }
 
 // -- Config des commandes --------------------------------------

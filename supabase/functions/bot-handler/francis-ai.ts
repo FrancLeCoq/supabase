@@ -195,40 +195,38 @@ export async function buildBatchedReply(sb: any, chatKey: string, mode: 'group' 
 export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en', mode: 'group' | 'dm' = 'group', history: ChatTurn[] = []): Promise<string | null> {
   const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) { console.error('askFrancisAI: GEMINI_API_KEY manquante'); return null }
-  const model = 'gemini-3.1-flash-lite'
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  // Réponses Telegram : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+  const models = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
   void lang   // le groupe est désormais bilingue : plus de branche par langue
   const sys = mode === 'dm'
     ? FRANCIS_SYSTEM_PROMPT + DM_LANGUAGE_RULE
     : FRANCIS_SYSTEM_PROMPT + `\n\n### LANGUAGE RULE — BILINGUAL GROUP\n"The Chicken Coop" is Francis' single BILINGUAL group (English & French). ALWAYS reply in the SAME language the user wrote in: French → answer in French; English → answer in English; any other language → answer in English. NEVER ask them to switch language and NEVER redirect them to another group. Keep it warm, funny and short (~280 characters max).`
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sys }] },
-        contents: [
-          ...(Array.isArray(history) ? history : []).map((h) => ({ role: h.role, parts: [{ text: String(h.text || '').slice(0, 1000) }] })),
-          { role: 'user', parts: [{ text: userMessage.slice(0, 1000) }] },
-        ],
-        // AUCUN plafond de tokens : on n'indique pas maxOutputTokens, le
-        // modèle garde son plafond par défaut (très large). Le cadrage de
-        // longueur (280 caractères max, en limite haute) est fait UNIQUEMENT
-        // dans le prompt — jamais par une coupure de tokens.
-        generationConfig: { temperature: 0.9 }
-      })
-    })
-    if (!res.ok) {
-      console.error('askFrancisAI: HTTP', res.status, (await res.text()).slice(0, 300))
-      return null
+  const payload = JSON.stringify({
+    systemInstruction: { parts: [{ text: sys }] },
+    contents: [
+      ...(Array.isArray(history) ? history : []).map((h) => ({ role: h.role, parts: [{ text: String(h.text || '').slice(0, 1000) }] })),
+      { role: 'user', parts: [{ text: userMessage.slice(0, 1000) }] },
+    ],
+    // AUCUN plafond de tokens : on n'indique pas maxOutputTokens, le
+    // modèle garde son plafond par défaut (très large). Le cadrage de
+    // longueur (280 caractères max, en limite haute) est fait UNIQUEMENT
+    // dans le prompt — jamais par une coupure de tokens.
+    generationConfig: { temperature: 0.9 }
+  })
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload })
+      if (res.status === 429) { console.warn('askFrancisAI 429 ' + model); continue }
+      if (!res.ok) { console.error('askFrancisAI: HTTP', res.status, model, (await res.text()).slice(0, 300)); continue }
+      const data = await res.json()
+      const out = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join(' ').trim()
+      if (out) return out
+    } catch (e) {
+      console.error('askFrancisAI exception:', model, String(e))
     }
-    const data = await res.json()
-    const out = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join(' ').trim()
-    return out || null
-  } catch (e) {
-    console.error('askFrancisAI exception:', String(e))
-    return null
   }
+  return null
 }
 
 // ══════════════════════════════════════════════════════════════

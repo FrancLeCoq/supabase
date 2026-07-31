@@ -7,7 +7,7 @@
 //  PIPELINE EN 2 TEMPS (memes quotas que daily-crypto) :
 //    A) RECHERCHE grounded (Google Search) - world -> gemini-2.5-flash
 //       (fallback gemini-2.5-flash-lite). Trouve la meilleure actu.
-//    B) MISE EN FORME - gemini-3.1-flash-lite : redige le message FR
+//    B) MISE EN FORME - gemini-3.5-flash-lite (repli 3.1) : redige le message FR
 //       (langue source), puis traduit en EN. Pas de grounding ici.
 //
 //  6 rubriques (pg_cron, corps {"kind":"..."}):
@@ -30,7 +30,8 @@ const NL = String.fromCharCode(10)
 // -- Modeles ---------------------------------------------------
 // World -> 2.5-flash en primaire (fallback 2.5-flash-lite).
 const SEARCH_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
-const FORMAT_MODEL = 'gemini-3.1-flash-lite'
+// Mise en forme/traduction : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const FORMAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 const AI_TIMEOUT_MS = 40000
 
 // -- Telegram : groupes & topics -------------------------------
@@ -123,17 +124,22 @@ async function groundedSearch(prompt: string): Promise<string> {
   return ''
 }
 
-// -- Etape B : mise en forme / traduction (3.1-flash-lite) -----
+// -- Etape B : mise en forme / traduction (3.5-flash-lite, repli 3.1) -----
 async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
-  try {
-    const res = await tfetch(geminiUrl(FORMAT_MODEL), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
-    }, 25000)
-    if (!res.ok) { console.error('formatCall HTTP', res.status); return '' }
-    return extractText(await res.json())
-  } catch (e) { console.error('formatCall exception', String(e)); return '' }
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
+      }, 25000)
+      if (res.status === 429) { console.warn('formatCall 429 ' + model); continue }
+      if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
+      const out = extractText(await res.json())
+      if (out) return out
+    } catch (e) { console.error('formatCall exception', model, String(e)) }
+  }
+  return ''
 }
 
 // -- Journal anti-doublon (slots wr_*) -------------------------

@@ -8,7 +8,7 @@
 //    A) RECHERCHE grounded (Google Search) - modèle 2.5 (quota 20 RPD) :
 //         crypto -> gemini-2.5-flash-lite  (fallback gemini-2.5-flash)
 //       Rôle : trouver la meilleure actu et en extraire les FAITS vérifiés.
-//    B) MISE EN FORME + vérif critères - gemini-3.1-flash-lite (500 RPD) :
+//    B) MISE EN FORME + vérif critères - gemini-3.5-flash-lite (repli 3.1) :
 //       Rôle : rédiger le message final (template + limite de caractères)
 //       à partir des faits de l'étape A. Pas de grounding ici.
 //
@@ -30,7 +30,8 @@ const NL = String.fromCharCode(10)
 // Étape A (recherche grounded) : on tente le 1er, repli sur le 2e si 429.
 const SEARCH_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash']
 // Étape B (mise en forme / vérif / traduction) : quota large, pas de grounding.
-const FORMAT_MODEL = 'gemini-3.1-flash-lite'
+// Mise en forme/traduction : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const FORMAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 const AI_TIMEOUT_MS = 40000
 
 // -- Telegram : groupes & topics -------------------------------
@@ -98,17 +99,22 @@ async function groundedSearch(prompt: string): Promise<string> {
   return ''
 }
 
-// -- Étape B : mise en forme / vérif (3.1-flash-lite, sans grounding) --
+// -- Étape B : mise en forme / vérif (3.5-flash-lite, repli 3.1 ; sans grounding) --
 async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
-  try {
-    const res = await tfetch(geminiUrl(FORMAT_MODEL), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
-    }, 25000)
-    if (!res.ok) { console.error('formatCall HTTP', res.status); return '' }
-    return extractText(await res.json())
-  } catch (e) { console.error('formatCall exception', String(e)); return '' }
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
+      }, 25000)
+      if (res.status === 429) { console.warn('formatCall 429 ' + model); continue }
+      if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
+      const out = extractText(await res.json())
+      if (out) return out
+    } catch (e) { console.error('formatCall exception', model, String(e)) }
+  }
+  return ''
 }
 
 // -- Journal anti-doublon (daily_news_log) ---------------------
@@ -471,7 +477,7 @@ async function generateNight(): Promise<{ ok: boolean; text: string; reason: str
   return { ok: false, text: '', reason: 'format inattendu (out=' + out.slice(0, 60) + ')' }
 }
 
-// -- Traduction FR (3.1-flash-lite) ----------------------------
+// -- Traduction FR (3.5-flash-lite, repli 3.1) -----------------
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram message into natural, fluent FRENCH for a French-speaking community.',

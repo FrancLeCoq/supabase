@@ -8,7 +8,7 @@
 //    * gn       20:15 Paris  -> GN du coq, message leger & fun
 //
 //  Chaque message est genere NATIVEMENT dans chaque langue (pas une
-//  traduction) pour que la blague reste drole : gemini-3.1-flash-lite
+//  traduction) pour que la blague reste drole : gemini-3.5-flash-lite (repli 3.1)
 //  (500 RPD, pas de grounding = tres peu de quota).
 //
 //  Diffusion : dans LES DEUX groupes, topic "General" (sans thread) :
@@ -19,7 +19,8 @@
 
 const NL = String.fromCharCode(10)
 
-const FORMAT_MODEL = 'gemini-3.1-flash-lite'
+// Génération/mise en forme : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const FORMAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 
 function geminiUrl(model: string): string {
   const key = Deno.env.get('GEMINI_API_KEY') || ''
@@ -38,15 +39,20 @@ function extractText(data: any): string {
 
 // Un appel de generation (temperature elevee pour varier chaque jour).
 async function generate(prompt: string): Promise<string> {
-  try {
-    const res = await tfetch(geminiUrl(FORMAT_MODEL), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1.0 } }),
-    }, 20000)
-    if (!res.ok) { console.error('daily-general generate HTTP', res.status); return '' }
-    return extractText(await res.json())
-  } catch (e) { console.error('daily-general generate exception', String(e)); return '' }
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1.0 } }),
+      }, 20000)
+      if (res.status === 429) { console.warn('daily-general generate 429 ' + model); continue }
+      if (!res.ok) { console.error('daily-general generate HTTP', res.status, model); continue }
+      const out = extractText(await res.json())
+      if (out) return out
+    } catch (e) { console.error('daily-general generate exception', model, String(e)) }
+  }
+  return ''
 }
 
 // -- Prompts par langue ----------------------------------------

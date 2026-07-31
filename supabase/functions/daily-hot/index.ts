@@ -9,7 +9,7 @@
 //  Les flux sont TRIES par date (adultfyi n'est pas chronologique : post
 //  epingle en tete). Image : XBIZ <image>, adultfyi <media:thumbnail>/
 //  <enclosure> (repli texte si sendPhoto refuse le format).
-//  Selection + redaction par gemini-3.1-flash-lite. Parsing SANS regex.
+//  Selection + redaction par gemini-3.5-flash-lite (repli 3.1). Parsing SANS regex.
 //
 //  3 creneaux/jour (pg_cron, corps {"slot":"hot-morning|hot-midday|hot-evening"}).
 //  Anti-doublon GLISSANT sur 72h, TOUTES sources confondues (filtre
@@ -24,7 +24,8 @@
 
 const NL = String.fromCharCode(10)
 const TAB = String.fromCharCode(9)
-const FORMAT_MODEL = 'gemini-3.1-flash-lite'
+// Sélection/rédaction : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const FORMAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 
 const FR_CHAT_ID = -1004352289820
 const FR_THREAD_HOT = 33
@@ -52,15 +53,20 @@ function extractText(data: any): string {
   return parts.map((p: any) => (p && p.text) ? p.text : '').join('').trim()
 }
 async function formatCall(prompt: string, temperature = 0.6): Promise<string> {
-  try {
-    const res = await tfetch(geminiUrl(FORMAT_MODEL), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
-    }, 25000)
-    if (!res.ok) { console.error('formatCall HTTP', res.status); return '' }
-    return extractText(await res.json())
-  } catch (e) { console.error('formatCall exception', String(e)); return '' }
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
+      }, 25000)
+      if (res.status === 429) { console.warn('formatCall 429 ' + model); continue }
+      if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
+      const out = extractText(await res.json())
+      if (out) return out
+    } catch (e) { console.error('formatCall exception', model, String(e)) }
+  }
+  return ''
 }
 
 // -- Parsing XML/HTML SANS regex -------------------------------

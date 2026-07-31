@@ -3,7 +3,7 @@
 //  Brique ISOLEE du decoupage daily-fact.
 //
 //  PAS de source externe : message creatif genere par Gemini
-//  (gemini-3.5-flash, repli gemini-3.1-flash-lite ; PAS de grounding).
+//  (gemini-3.5-flash-lite, repli gemini-3.1-flash-lite ; PAS de grounding).
 //  Rotation cote serveur d'un ANGLE + un SUJET pour varier chaque jour.
 //
 //  Creneau (pg_cron, corps {}):  08:30 UTC.
@@ -15,7 +15,8 @@
 // ================================================================
 
 const NL = String.fromCharCode(10)
-const GEN_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite']
+// Génération/traduction : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const GEN_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 
 const DID_YOU_KNOW_PROMPT = `You write ONE short, punchy "Did you know?" message for the Telegram community of $FRANC, a fun community memecoin built around Francis the rooster. You have lots of freedom in the HOOK (how you start) - BUT every single message MUST end on a clever, NATURAL link to $FRANC or the $FRANC universe. That tie-in is the whole point: an interesting fact that does NOT connect back to $FRANC is a FAILURE.
 
@@ -133,15 +134,20 @@ async function translateToFrench(text: string): Promise<string> {
     'MESSAGE:',
     text,
   ].join(NL)
-  try {
-    const res = await tfetch(geminiUrl('gemini-3.1-flash-lite'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
-    }, 25000)
-    if (!res.ok) { console.error('translateToFrench HTTP', res.status); return '' }
-    return extractText(await res.json())
-  } catch (e) { console.error('translateToFrench exception', String(e)); return '' }
+  for (const model of GEN_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+      }, 25000)
+      if (res.status === 429) { console.warn('translateToFrench 429 ' + model); continue }
+      if (!res.ok) { console.error('translateToFrench HTTP', res.status, model); continue }
+      const out = extractText(await res.json())
+      if (out) return out
+    } catch (e) { console.error('translateToFrench exception', model, String(e)) }
+  }
+  return ''
 }
 
 // -- Telegram + bandeau ----------------------------------------

@@ -233,20 +233,25 @@ async function geminiTranslateToggle(text: string): Promise<string> {
     'MESSAGE:',
     text,
   ].join('\n')
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${key}`,
-      {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
-        signal: AbortSignal.timeout(25000),
-      }
-    )
-    if (!res.ok) return ''
-    const data = await res.json()
-    const parts = data?.candidates?.[0]?.content?.parts ?? []
-    return parts.map((p: any) => p?.text ?? '').join('').trim()
-  } catch { return '' }
+  // Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota atteint.
+  for (const model of ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+          signal: AbortSignal.timeout(25000),
+        }
+      )
+      if (res.status === 429 || !res.ok) continue
+      const data = await res.json()
+      const parts = data?.candidates?.[0]?.content?.parts ?? []
+      const out = parts.map((p: any) => p?.text ?? '').join('').trim()
+      if (out) return out
+    } catch { /* modèle suivant */ }
+  }
+  return ''
 }
 
 Deno.serve(async (req) => {
@@ -1100,11 +1105,11 @@ Deno.serve(async (req) => {
         `Daily-crypto : 4/jour\nDaily-pump : 2/jour\n<i>(+ repli pour Daily-world & Racing)</i>\n\n` +
         `<b>2️⃣ Gemini 2.5 Flash</b> — recherche web (primaire)\n` +
         `Daily-world : 6/jour\nRacing : à la demande\n<i>(+ repli pour Daily-crypto & Daily-pump)</i>\n\n` +
-        `<b>3️⃣ Gemini 3.1 Flash-Lite</b> — mise en forme & traduction\n` +
+        `<b>3️⃣ Gemini 3.5 Flash-Lite</b> — mise en forme, traduction, génération & réponses\n` +
+        `<i>(repli automatique sur 3.1 Flash-Lite si quota atteint)</i>\n` +
         `Daily-crypto : 4/jour\nDaily-world : 6/jour\nDaily-pump : 2/jour\nDaily-hot : 3/jour\n` +
-        `Daily-general : 2/jour\nTrump-news : en pause\nRacing : à la demande\nBreaking-news : à la demande\n\n` +
-        `<b>4️⃣ Gemini 3.5 Flash</b> — génération (sans recherche)\n` +
-        `Daily-fact-dyk : 1/jour <i>(repli 3.1 Flash-Lite)</i>`)
+        `Daily-general : 2/jour\nDaily-fact-dyk : 1/jour\nTrump-news : en pause\n` +
+        `Racing : à la demande\nBreaking-news : à la demande\nRéponses du bot (Telegram) : à la demande`)
       return new Response('ok')
     }
 

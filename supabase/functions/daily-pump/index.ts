@@ -8,7 +8,7 @@
 //  peut signaler une manip (dump+pump, wash trading...) si les
 //  donnees/chatter le suggerent. Termine par les market caps $FRANC.
 //
-//  Pipeline : Chain/Project -> gemini-3.1-flash-lite (faits CoinGecko) ;
+//  Pipeline : Chain/Project -> gemini-3.5-flash-lite (repli 3.1 ; faits CoinGecko) ;
 //  Catalyst -> grounding sur gemini-2.5-flash-lite (fallback 2.5-flash).
 //
 //  2 creneaux/jour (pg_cron, corps {}):  08:30 et 15:30 UTC.
@@ -19,7 +19,8 @@
 
 const NL = String.fromCharCode(10)
 const SEARCH_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash']
-const FORMAT_MODEL = 'gemini-3.1-flash-lite'
+// Mise en forme/traduction : Gemini 3.5 Flash-Lite, repli 3.1 Flash-Lite si quota.
+const FORMAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
 const AI_TIMEOUT_MS = 40000
 
 const CRYPTO_THREAD_EN = 1490
@@ -61,15 +62,20 @@ async function groundedSearch(prompt: string): Promise<string> {
   return ''
 }
 async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
-  try {
-    const res = await tfetch(geminiUrl(FORMAT_MODEL), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
-    }, 25000)
-    if (!res.ok) { console.error('formatCall HTTP', res.status); return '' }
-    return extractText(await res.json())
-  } catch (e) { console.error('formatCall exception', String(e)); return '' }
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
+      }, 25000)
+      if (res.status === 429) { console.warn('formatCall 429 ' + model); continue }
+      if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
+      const out = extractText(await res.json())
+      if (out) return out
+    } catch (e) { console.error('formatCall exception', model, String(e)) }
+  }
+  return ''
 }
 
 // -- Market caps -----------------------------------------------
