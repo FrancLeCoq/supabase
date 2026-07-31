@@ -101,16 +101,22 @@ function teamStyle(team: string, isF1: boolean): TeamStyle {
 }
 
 // ── Parsing du classement depuis le texte EN mis en forme ─────
-type Row = { pos: number; name: string; team: string; points: string }
+export type StKind = 'we' | 'course' | 'constructors'
+type Row = { pos: number; name: string; team: string; points: string; sub?: string }
 // Retire un préfixe de position en emojis keycap (1️⃣, 🔟, 1️⃣1️⃣…).
 const KEYCAP_PREFIX = /^[\s]*(?:[0-9️⃣]|\u{1F51F})+\s*/u
+// Vrai si la ligne débute par une position en keycap (ligne de classement).
+export function isStandingLine(line: string): boolean {
+  return KEYCAP_PREFIX.test(line)
+}
 function stripKeycap(line: string): string | null {
   const m = line.match(KEYCAP_PREFIX)
   if (!m) return null
   return line.slice(m[0].length).trim()
 }
-// kind 'we' -> "I. Nom, Écurie - 208p" ; 'course' -> "Nom (Écurie)".
-export function parseStandings(enText: string, kind: 'we' | 'course'): Row[] {
+// kind 'we' -> "I. Nom, Écurie - 208p" ; 'course'/qualifs -> "Nom (Écurie)" ;
+// 'constructors' -> "Écurie - 512p | Pilote1 & Pilote2".
+export function parseStandings(enText: string, kind: StKind): Row[] {
   const rows: Row[] = []
   const lines = (enText || '').split(NL)
   for (const raw of lines) {
@@ -125,6 +131,15 @@ export function parseStandings(enText: string, kind: 'we' | 'course'): Row[] {
       const name = ci >= 0 ? rest.slice(0, ci).trim() : rest
       const team = ci >= 0 ? rest.slice(ci + 1).trim() : ''
       if (name) rows.push({ pos: rows.length + 1, name, team, points })
+    } else if (kind === 'constructors') {
+      const bar = content.indexOf('|')
+      const left = (bar >= 0 ? content.slice(0, bar) : content).trim()
+      const drivers = bar >= 0 ? content.slice(bar + 1).trim() : ''
+      const pm = left.match(/[-–]\s*(\d+)\s*p\b/i)
+      const points = pm ? pm[1] : ''
+      let name = pm ? left.slice(0, pm.index).trim() : left
+      name = name.replace(/[-–]\s*$/, '').trim()
+      if (name) rows.push({ pos: rows.length + 1, name, team: name, points, sub: drivers })
     } else {
       const tm = content.match(/\(([^)]+)\)/)
       const team = tm ? tm[1].trim() : ''
@@ -141,11 +156,12 @@ function esc(s: string): string {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 const MEDAL = ['#F4C542', '#C7CDD4', '#CD7F32'] // or / argent / bronze
-function buildSvg(rows: Row[], title: string, isF1: boolean, showPoints: boolean): string {
+function buildSvg(rows: Row[], title: string, subtitle: string, isF1: boolean, showPoints: boolean): string {
+  const hasSub = rows.some((r) => r.sub && r.sub.length > 0)
   const W = 780
   const padX = 20
   const headH = 78
-  const rowH = 52
+  const rowH = hasSub ? 64 : 52   // lignes plus hautes si sous-titre (pilotes)
   const gap = 8
   const H = headH + rows.length * (rowH + gap) + 20
   const accent = isF1 ? '#E10600' : '#C8102E'
@@ -156,8 +172,7 @@ function buildSvg(rows: Row[], title: string, isF1: boolean, showPoints: boolean
   parts.push(`<rect x="0" y="0" width="${W}" height="${headH}" rx="24" fill="#0B1220"/>`)
   parts.push(`<rect x="${padX}" y="34" width="6" height="30" rx="3" fill="${accent}"/>`)
   parts.push(`<text x="${padX + 20}" y="50" fill="#FFFFFF" font-size="30" font-weight="700">${esc(title)}</text>`)
-  const sub = showPoints ? 'World Championship' : 'Classement de la course'
-  parts.push(`<text x="${padX + 20}" y="70" fill="#93A3B8" font-size="16">${esc(sub)}</text>`)
+  parts.push(`<text x="${padX + 20}" y="70" fill="#93A3B8" font-size="16">${esc(subtitle)}</text>`)
 
   let y = headH
   for (const r of rows) {
@@ -172,15 +187,21 @@ function buildSvg(rows: Row[], title: string, isF1: boolean, showPoints: boolean
     const posFg = r.pos <= 3 ? '#111111' : '#E2E8F0'
     parts.push(`<circle cx="${cx}" cy="${cy}" r="17" fill="${posBg}"/>`)
     parts.push(`<text x="${cx}" y="${cy + 6}" fill="${posFg}" font-size="18" font-weight="700" text-anchor="middle">${r.pos}</text>`)
-    // Nom du pilote
-    parts.push(`<text x="${padX + 72}" y="${cy + 7}" fill="#F8FAFC" font-size="22" font-weight="600">${esc(r.name)}</text>`)
-    // Badge écurie (pastille colorée avec le nom court)
-    const label = st.short || r.team
-    if (label) {
-      const bw = Math.min(150, 22 + label.length * 10)
-      const bx = showPoints ? (W - padX - 92 - bw) : (W - padX - 16 - bw)
-      parts.push(`<rect x="${bx}" y="${y + rowH / 2 - 15}" width="${bw}" height="30" rx="15" fill="${st.bg}"/>`)
-      parts.push(`<text x="${bx + bw / 2}" y="${cy + 5}" fill="${st.fg}" font-size="15" font-weight="700" text-anchor="middle">${esc(label)}</text>`)
+    if (r.sub && r.sub.length > 0) {
+      // Ligne constructeur : nom (grand) + pilotes titulaires (petit) dessous.
+      parts.push(`<text x="${padX + 72}" y="${cy - 2}" fill="#F8FAFC" font-size="22" font-weight="700">${esc(r.name)}</text>`)
+      parts.push(`<text x="${padX + 72}" y="${cy + 19}" fill="#93A3B8" font-size="15" font-weight="500">${esc(r.sub)}</text>`)
+    } else {
+      // Nom du pilote
+      parts.push(`<text x="${padX + 72}" y="${cy + 7}" fill="#F8FAFC" font-size="22" font-weight="600">${esc(r.name)}</text>`)
+      // Badge écurie (pastille colorée avec le nom court)
+      const label = st.short || r.team
+      if (label) {
+        const bw = Math.min(150, 22 + label.length * 10)
+        const bx = showPoints ? (W - padX - 92 - bw) : (W - padX - 16 - bw)
+        parts.push(`<rect x="${bx}" y="${y + rowH / 2 - 15}" width="${bw}" height="30" rx="15" fill="${st.bg}"/>`)
+        parts.push(`<text x="${bx + bw / 2}" y="${cy + 5}" fill="${st.fg}" font-size="15" font-weight="700" text-anchor="middle">${esc(label)}</text>`)
+      }
     }
     // Points (alignés à droite)
     if (showPoints && r.points) {
@@ -194,7 +215,7 @@ function buildSvg(rows: Row[], title: string, isF1: boolean, showPoints: boolean
 
 // ── API publique : renvoie le PNG (ou null si indispo) ────────
 export async function renderStandingsPng(
-  enText: string, kind: 'we' | 'course', isF1: boolean, sportShort: string,
+  enText: string, kind: StKind, isF1: boolean, sportShort: string, subtitle: string,
 ): Promise<Uint8Array | null> {
   try {
     const rows = parseStandings(enText, kind)
@@ -202,7 +223,8 @@ export async function renderStandingsPng(
     const [ok, font] = await Promise.all([ensureWasm(), ensureFont()])
     if (!ok || !font) return null
     const title = sportShort
-    const svg = buildSvg(rows, title, isF1, kind === 'we')
+    const showPoints = kind === 'we' || kind === 'constructors'
+    const svg = buildSvg(rows, title, subtitle, isF1, showPoints)
     const resvg = new Resvg(svg, {
       background: '#0B1220',
       fitTo: { mode: 'width', value: 1120 }, // haute résolution -> texte net

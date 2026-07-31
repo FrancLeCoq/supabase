@@ -926,7 +926,7 @@ Deno.serve(async (req) => {
     //  Délègue à la fonction isolée « racing » (recherche + EN + FR).
     // ══════════════════════════════════════════════════════════
     {
-      const RACING_CMDS = ['/f1essais','/gpessais','/f1qualifs','/gpqualifs','/f1qualifssprint','/gpqualifssprint','/f1sprint','/gpsprint','/f1course','/gpcourse','/f1we','/gpwe','/f1news','/gpnews']
+      const RACING_CMDS = ['/f1essais','/gpessais','/f1qualifs','/gpqualifs','/f1qualifssprint','/gpqualifssprint','/f1sprint','/gpsprint','/f1course','/gpcourse','/f1we','/gpwe','/f1news','/gpnews','/f1constructeurs','/gpconstructeurs']
       if (RACING_CMDS.includes(text)) {
         if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement
         const cronSecret = Deno.env.get('CRON_SECRET') || ''
@@ -1031,7 +1031,9 @@ Deno.serve(async (req) => {
         `<b>2️⃣ Racing</b> (The Chicken Coop, EN + bouton 🇫🇷)\n` +
         `/F1essais · /GPessais — Essais libres\n/F1qualifs · /GPqualifs — Qualifications\n` +
         `/F1qualifssprint · /GPqualifssprint — Qualifs sprint\n/F1sprint · /GPsprint — Course sprint\n` +
-        `/F1course · /GPcourse — Course (GP)\n/F1we · /GPwe — Programme du week-end\n/F1news · /GPnews — Potins paddock\n\n` +
+        `/F1course · /GPcourse — Course (GP)\n/F1we · /GPwe — Programme du week-end\n/F1news · /GPnews — Potins paddock\n` +
+        `/F1constructeurs · /GPconstructeurs — Classement constructeurs (PNG + bouton X)\n` +
+        `<i>(classements course/qualifs/we envoyés en image PNG)</i>\n\n` +
         `<b>3️⃣ Breaking news perso</b>\n` +
         `/f1 — Breaking news F1\n/motogp — Breaking news MotoGP\n/worldroost — Breaking news World Roost\n` +
         `/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n` +

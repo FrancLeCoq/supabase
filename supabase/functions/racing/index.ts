@@ -18,7 +18,7 @@
 //  Securite : header x-cron-secret == CRON_SECRET.
 // ================================================================
 
-import { renderStandingsPng, parseStandings } from './standings-image.ts'
+import { renderStandingsPng, parseStandings, isStandingLine, type StKind } from './standings-image.ts'
 
 const NL = String.fromCharCode(10)
 
@@ -98,7 +98,7 @@ async function formatCall(prompt: string): Promise<string> {
 // -- Config des commandes --------------------------------------
 // type de rubrique -> prompt de recherche (EN) + consigne de mise en
 // forme + hooks EN/FR. {S} = 'F1' ou 'MotoGP', {SPORT} = nom long.
-type RType = 'essais' | 'qualifs' | 'qualifssprint' | 'sprint' | 'course' | 'we' | 'news'
+type RType = 'essais' | 'qualifs' | 'qualifssprint' | 'sprint' | 'course' | 'we' | 'news' | 'constructeurs'
 
 function searchPrompt(sportLong: string, type: RType): string {
   const base = 'Use Google Search to find accurate, up-to-date facts. Report ONLY verified facts, in English, as raw notes (no styling). If you genuinely cannot find the information, reply with exactly: NONE.' + NL + NL
@@ -110,6 +110,7 @@ function searchPrompt(sportLong: string, type: RType): string {
     course: 'Find the results of the most recent ' + sportLong + ' main RACE (Grand Prix). Give the winner, the podium, and the finishing order (top positions with name + team), plus key highlights and incidents.',
     we: 'TWO things about ' + sportLong + '. (1) The NEXT upcoming race weekend: the Grand Prix name and circuit/location (city, country), and the FULL session schedule for each day (practice, qualifying, sprint if any, race) with their start times, converted to UTC. (2) The CURRENT ' + sportLong + ' World Drivers/Riders Championship standings AS OF TODAY: the FULL classification IN ORDER with, for EACH entry, the position, the driver/rider FULL name (first + last), their team/constructor NAME, and their points total. Label this section STANDINGS and keep every position.',
     news: 'Find the freshest ' + sportLong + ' paddock news, rumours and gossip from the LAST 48 HOURS (driver/rider moves, contracts, team news, controversies, injuries). Juicy but factual.',
+    constructeurs: 'Find the CURRENT ' + sportLong + " Constructors'/Manufacturers' Championship standings AS OF TODAY: the FULL classification IN ORDER with, for EACH constructor/team, the position, the constructor/team NAME, their points total, AND the names of that team's TWO regular race drivers/riders (for a manufacturer, its two leading works riders). Give each driver/rider as first-name INITIAL + last name. Label this STANDINGS and keep every position.",
   }
   return base + q[type]
 }
@@ -134,6 +135,7 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
       + '(6) Then the FULL current standings from the facts, ONE line per driver/rider IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣, 1️⃣2️⃣), formatted EXACTLY like this: "' + standingsFmt + '". For the driver/rider name use ONLY the first-name INITIAL + "." + the FULL last name (e.g. "K. Antonelli", "L. Hamilton"). '
       + 'Keep the exact order, teams and points from the facts. Write the points as WHOLE INTEGERS with NO decimals and NO trailing ".0"/".00" (e.g. "208p", never "208.00p"; "87p", never "87.0p"). Shorten these team names: "Racing Bulls" -> "Racing B.", "Aston Martin" -> "Aston M.", "Red Bull" -> "Red B.". NO 280-character limit here.',
     news: 'Write the freshest paddock news as 3 to 5 short punchy bullet points. Each bullet MUST start with "👉 " and be a single sentence. Separate EACH bullet with a BLANK LINE (an empty line between bullets, so they are airy and never glued together). Keep it factual. Max ~600 characters.',
+    constructeurs: "Write ONLY the constructors' standings, with NO preamble and NO extra text. ONE line per constructor IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣), formatted EXACTLY like this: \"<rank emoji> <Constructor/Team> - <points>p | <Driver1> & <Driver2>\". Use the driver/rider first-name INITIAL + \".\" + full last name (e.g. \"1️⃣ McLaren - 512p | L. Norris & O. Piastri\"). Write the points as WHOLE INTEGERS with no decimals. Shorten these team names: \"Racing Bulls\" -> \"Racing B.\", \"Aston Martin\" -> \"Aston M.\", \"Red Bull\" -> \"Red B.\". Keep the exact order and points from the facts. NO 280-character limit.",
   }
   return [
     'You are Francis the rooster, a witty motorsport reporter for a Telegram community.',
@@ -157,10 +159,12 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
 const HOOK_EN: Record<RType, string> = {
   essais: 'Practice highlights', qualifs: 'Qualifying', qualifssprint: 'Sprint Qualifying',
   sprint: 'Sprint race', course: 'Race', we: 'Next race weekend', news: 'Paddock buzz 🏁 :',
+  constructeurs: "Constructors' Championship",
 }
 const HOOK_FR: Record<RType, string> = {
   essais: 'Essais : temps forts', qualifs: 'Qualifications', qualifssprint: 'Qualifs Sprint',
   sprint: 'Course Sprint', course: 'Course', we: 'Prochain week-end', news: 'Potins du paddock 🏁 :',
+  constructeurs: 'Classement constructeurs',
 }
 
 // -- Telegram --------------------------------------------------
@@ -207,25 +211,74 @@ async function dmOwner(token: string, text: string) {
   try { await post(token, OWNER_ID, text, 0) } catch { /* ignore */ }
 }
 // Envoi d'une image PNG (classement) via sendPhoto (multipart). Best-effort.
-async function sendPhotoBytes(token: string, chatId: number, png: Uint8Array, threadId: number): Promise<number> {
+async function sendPhotoBytes(token: string, chatId: number, png: Uint8Array, threadId: number, caption?: string, replyMarkup?: any): Promise<number> {
   try {
     const form = new FormData()
     form.append('chat_id', String(chatId))
     if (threadId) form.append('message_thread_id', String(threadId))
     form.append('photo', new Blob([png], { type: 'image/png' }), 'standings.png')
+    if (caption) { form.append('caption', caption); form.append('parse_mode', 'HTML') }
+    if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup))
     const res = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', body: form }, 20000)
     const data = await res.json()
     if (!data || !data.ok) { console.error('racing sendPhoto:', JSON.stringify(data).slice(0, 200)); return 0 }
     return Number(data.result && data.result.message_id) || 0
   } catch (e) { console.error('racing sendPhoto exception', String(e)); return 0 }
 }
-// Génère + envoie le PNG du classement (course + week-end uniquement). Best-effort.
+// Sessions dont le classement s'affiche en PNG (et disparaît du texte).
+const IMG_CFG: Partial<Record<RType, { kind: StKind; subtitle: string }>> = {
+  we: { kind: 'we', subtitle: 'World Championship' },
+  course: { kind: 'course', subtitle: 'Race classification' },
+  sprint: { kind: 'course', subtitle: 'Sprint classification' },
+  qualifs: { kind: 'course', subtitle: 'Qualifying' },
+  qualifssprint: { kind: 'course', subtitle: 'Sprint qualifying' },
+}
+// Retire le bloc classement du texte (lignes en keycap + en-tête « 🏆 … »).
+// Le classement ne vit plus que dans le PNG (langue-neutre, pas de traduction).
+function stripStandings(text: string): string {
+  const kept = (text || '').split(NL).filter((l) => {
+    const t = l.trim()
+    if (isStandingLine(l)) return false
+    if (/^🏆/.test(t) || /world championship/i.test(t) || /championnat du monde/i.test(t)) return false
+    return true
+  })
+  return kept.join(NL).replace(/\n{3,}/g, NL + NL).trim()
+}
+// Génère + envoie le PNG du classement pour les sessions concernées. Best-effort.
 async function maybeSendStandingsImage(token: string, enText: string, type: RType, isF1: boolean, sportShort: string): Promise<void> {
-  if (type !== 'we' && type !== 'course') return
+  const cfg = IMG_CFG[type]
+  if (!cfg) return
   try {
-    const png = await renderStandingsPng(enText, type === 'we' ? 'we' : 'course', isF1, sportShort)
+    const png = await renderStandingsPng(enText, cfg.kind, isF1, sportShort, cfg.subtitle)
     if (png && png.length > 0) await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN)
   } catch (e) { console.error('racing standings image', String(e)) }
+}
+// /F1constructeurs /GPconstructeurs : classement constructeurs en PNG UNIQUEMENT.
+// Posté sur Cocorico Racing + DM au owner avec bouton « Publier sur X ».
+async function runConstructors(token: string, isF1: boolean, sportShort: string, sportEmoji: string): Promise<void> {
+  const sportLong = isF1 ? 'Formula 1' : 'MotoGP'
+  const facts = await groundedSearch(searchPrompt(sportLong, 'constructeurs'))
+  if (!facts || facts.toUpperCase().indexOf('NONE') === 0) {
+    await dmOwner(token, '🏆 Classement constructeurs ' + sportShort + ' : aucune donnée trouvée pour le moment. Réessaie plus tard.')
+    return
+  }
+  const list = shortenTeams(await formatCall(formatPrompt('English', sportShort, 'constructeurs', facts)))
+  if (!list || list.toUpperCase().indexOf('NONE') === 0) {
+    await dmOwner(token, '🏆 Classement constructeurs ' + sportShort + ' : mise en forme impossible (réessaie).')
+    return
+  }
+  const png = await renderStandingsPng(list, 'constructors', isF1, sportShort, "Constructors' Championship")
+  if (!png || png.length === 0) {
+    await dmOwner(token, '🏆 Classement constructeurs ' + sportShort + ' : image indisponible pour le moment (réessaie).')
+    return
+  }
+  const caption = sportEmoji + ' ' + sportShort + ' — Classement constructeurs 🏆'
+  // 1) Cocorico Racing : le PNG (image uniquement).
+  await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN, caption)
+  // 2) DM owner : le même PNG + bouton « Publier sur X » (texte pré-rempli).
+  const tag = isF1 ? '#F1 #Formula1' : '#MotoGP'
+  const xText = sportEmoji + ' ' + sportShort + " Constructors' Championship 🏁" + NL + NL + tag
+  await sendPhotoBytes(token, OWNER_ID, png, 0, caption, xShareKeyboard(xText))
 }
 
 // Raccourcit les noms d'écuries trop longs (garanti, en plus de la consigne IA).
@@ -243,6 +296,9 @@ async function runCommand(token: string, command: string): Promise<void> {
   const sportEmoji = isF1 ? '🏎️' : '🏍️'   // petite F1 / petite moto en tete du titre
   const type = command.replace('f1', '').replace('gp', '') as RType
 
+  // Classement constructeurs : flux dédié (PNG only + DM owner « Publier sur X »).
+  if (type === 'constructeurs') { await runConstructors(token, isF1, sportShort, sportEmoji); return }
+
   const facts = await groundedSearch(searchPrompt(sportLong, type))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) {
     await dmOwner(token, '🏁 /' + command + ' : aucune info trouvee pour le moment (course pas encore courue ou pas de donnees). Reessaie plus tard.')
@@ -259,18 +315,23 @@ async function runCommand(token: string, command: string): Promise<void> {
 
   // The Chicken Coop (Cocorico Racing, 1631) : EN par défaut + bouton 🇬🇧/🇫🇷.
   // Poulailler supprimé : la version FR reste accessible via le bouton.
-  const en = shortenTeams(await formatCall(formatPrompt('English', sportShort, type, facts)))
-  const fr = shortenTeams(await formatCall(formatPrompt('French', sportShort, type, facts)))
-  const enOk = en && en.toUpperCase().indexOf('NONE') !== 0
-  const frOk = fr && fr.toUpperCase().indexOf('NONE') !== 0
+  const enFull = shortenTeams(await formatCall(formatPrompt('English', sportShort, type, facts)))
+  const frFull = shortenTeams(await formatCall(formatPrompt('French', sportShort, type, facts)))
+  const enOk = enFull && enFull.toUpperCase().indexOf('NONE') !== 0
+  const frOk = frFull && frFull.toUpperCase().indexOf('NONE') !== 0
+  // Pour les sessions à classement : le classement sort du texte (il ne vit plus
+  // qu'en PNG) ; on ne garde que le préambule. Sinon on affiche le texte tel quel.
+  const hasImg = !!IMG_CFG[type]
+  const enDisp = hasImg ? stripStandings(enFull) : enFull
+  const frDisp = hasImg ? stripStandings(frFull) : frFull
   if (enOk) {
-    const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + weSuffix + headSep + en
-    const frMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + headSep + fr
+    const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + weSuffix + headSep + enDisp
+    const frMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + headSep + frDisp
     const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN, NLANG_BTN)
     if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
     if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
-    // Classement en image (course + week-end) : texte d'abord, PNG juste après.
-    await maybeSendStandingsImage(token, en, type, isF1, sportShort)
+    // Classement en image : texte (préambule) d'abord, PNG du classement juste après.
+    await maybeSendStandingsImage(token, enFull, type, isF1, sportShort)
     // Copie EN -> owner (pour coller sur X). Sans lien (CTA en commentaire via /xf1…).
     await dmOwnerCopy(token, enMsg)
   } else { console.error('racing[' + command + '] EN vide/NONE') }
@@ -286,6 +347,7 @@ const VALID = new Set([
   'f1qualifs', 'gpqualifs', 'f1qualifssprint', 'gpqualifssprint',
   'f1sprint', 'gpsprint', 'f1course', 'gpcourse',
   'f1we', 'gpwe', 'f1news', 'gpnews',
+  'f1constructeurs', 'gpconstructeurs',
 ])
 
 Deno.serve(async (req: Request) => {
@@ -311,9 +373,9 @@ Deno.serve(async (req: Request) => {
     const isF1 = command.startsWith('f1')
     const sportShort = isF1 ? 'F1' : 'MotoGP'
     const type = (command.replace('f1', '').replace('gp', '') || 'we') as RType
-    const kind = type === 'course' ? 'course' : 'we'
+    const kind: StKind = type === 'constructeurs' ? 'constructors' : (type === 'course' ? 'course' : 'we')
     const rows = parseStandings(probeEn, kind)
-    const png = await renderStandingsPng(probeEn, kind, isF1, sportShort)
+    const png = await renderStandingsPng(probeEn, kind, isF1, sportShort, 'Probe')
     return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, rows: rows.slice(0, 3), pngBytes: png ? png.length : 0 }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
