@@ -315,13 +315,20 @@ Deno.serve(async (req: Request) => {
     const kind = type === 'course' ? 'course' : 'we'
     const rows = parseStandings(probeEn, kind)
     const png = await renderStandingsPng(probeEn, kind, isF1, sportShort)
-    let pngB64 = ''
+    let uploadUrl = ''
     if (probeB64 && png) {
-      let bin = ''
-      for (let i = 0; i < png.length; i += 8192) bin += String.fromCharCode(...png.subarray(i, i + 8192))
-      pngB64 = btoa(bin)
+      try {
+        const base = Deno.env.get('SUPABASE_URL') || ''
+        const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+        const path = 'standings-' + Date.now() + '.png'
+        const up = await fetch(base + '/storage/v1/object/qa-images/' + path, {
+          method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'image/png', 'x-upsert': 'true' }, body: png,
+        })
+        if (up.ok) uploadUrl = base + '/storage/v1/object/public/qa-images/' + path
+        else console.error('qa upload', up.status, (await up.text()).slice(0, 120))
+      } catch (e) { console.error('qa upload exc', String(e)) }
     }
-    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, rows: rows.slice(0, 3), pngBytes: png ? png.length : 0, pngB64 }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, rows: rows.slice(0, 3), pngBytes: png ? png.length : 0, uploadUrl }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   if (!VALID.has(command)) return new Response(JSON.stringify({ error: 'unknown command', command }), { status: 400, headers: { 'Content-Type': 'application/json' } })
