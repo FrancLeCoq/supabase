@@ -167,7 +167,7 @@ function htmlDecodeBasic(s: string): string {
 }
 const TREND_NOISE = /^(home|trends?|login|log in|sign in|sign up|menu|about|privacy|terms|contact|english|worldwide|world|more|search|next|previous|back|rattibha|twitter|x|top|new|help|settings|language)$/i
 // Libellés/rubriques de la page à écarter (sous-chaînes).
-const TREND_NOISE_SUB = /(twitter trends|trending now|worldwide trends|see all|show more|read more|view all|sign in|log in)/i
+const TREND_NOISE_SUB = /(twitter trends|trending now|see all|show more|read more|view all|sign in|log in|^(?:worldwide|united states|france|x) trends$)/i
 function pushTrend(out: string[], seen: Set<string>, t: string) {
   t = htmlDecodeBasic(t).trim()
   if (t.length < 2 || t.length > 50) return
