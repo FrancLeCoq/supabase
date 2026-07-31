@@ -141,13 +141,78 @@ function xShareKeyboard(text: string) {
   return { inline_keyboard: [row] }
 }
 
-// Recherche des 4 plus grosses tendances X (Twitter) mondiales du moment.
+// Repli IA (grounded) si la récupération directe échoue.
 function trendsSearchPrompt(): string {
   return [
-    'Use Google Search to find the CURRENT top worldwide trending topics on X (formerly Twitter) RIGHT NOW.',
+    'Use Google Search to find the CURRENT top worldwide trending topics on X (formerly Twitter) RIGHT NOW (today).',
     'Check live trend aggregators such as rattibha.com/trends, getdaytrends.com and trends24.in (worldwide).',
-    'Return ONLY the 4 BIGGEST worldwide trends, most important first, ONE per line, each as its short trend name or hashtag (e.g. "#SuperBowl" or "Taylor Swift"). No numbering, no extra words, no explanation. Exactly 4 lines.',
+    'Return ONLY the 10 BIGGEST worldwide trends, most important first, ONE per line, each as its short trend name or hashtag (e.g. "#SuperBowl" or "Taylor Swift"). No numbering, no extra words. Exactly 10 lines.',
   ].join(NL)
+}
+
+// ── Récupération LIVE des tendances X ─────────────────────────
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+function htmlDecodeBasic(s: string): string {
+  return s.replace(/&amp;/g, '&').replace(/&#0?39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+}
+const TREND_NOISE = /^(home|trends?|login|log in|sign in|sign up|menu|about|privacy|terms|contact|english|worldwide|world|more|search|next|previous|back|rattibha|twitter|x|top|new|help|settings|language)$/i
+function pushTrend(out: string[], seen: Set<string>, t: string) {
+  t = htmlDecodeBasic(t).trim()
+  if (t.length < 2 || t.length > 50) return
+  if (TREND_NOISE.test(t)) return
+  const k = t.toLowerCase()
+  if (seen.has(k)) return
+  seen.add(k); out.push(t)
+}
+// en.rattibha.com/trends (source demandée). Extrait les objets tendance
+// embarqués (Next data "name":"…") + les hashtags visibles.
+async function fromRattibha(): Promise<string[]> {
+  try {
+    const res = await tfetch('https://en.rattibha.com/trends', { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html' } }, 15000)
+    if (!res.ok) return []
+    const html = await res.text()
+    const out: string[] = []; const seen = new Set<string>()
+    let m: RegExpExecArray | null
+    const reName = /"name"\s*:\s*"([^"]{2,50})"/g
+    while ((m = reName.exec(html)) && out.length < 20) pushTrend(out, seen, m[1])
+    const reTag = /#[A-Za-z0-9_]{2,40}/g
+    while ((m = reTag.exec(html)) && out.length < 25) pushTrend(out, seen, m[0])
+    return out
+  } catch { return [] }
+}
+// trends24.in (SSR fiable) — repli live si rattibha ne renvoie rien d'exploitable.
+async function fromTrends24(): Promise<string[]> {
+  try {
+    const res = await tfetch('https://trends24.in/', { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html' } }, 15000)
+    if (!res.ok) return []
+    const html = await res.text()
+    const i = html.indexOf('trend-card__list')
+    const seg = i >= 0 ? html.slice(i, i + 14000) : html
+    const out: string[] = []; const seen = new Set<string>()
+    let m: RegExpExecArray | null
+    const re = /<a\b[^>]*>([^<]{2,60})<\/a>/g
+    while ((m = re.exec(seg)) && out.length < 20) pushTrend(out, seen, m[1])
+    return out
+  } catch { return [] }
+}
+// Renvoie jusqu'à 10 tendances live + la source utilisée.
+async function fetchTrends(): Promise<{ trends: string[]; source: string }> {
+  const rat = await fromRattibha()
+  if (rat.length >= 8) return { trends: rat.slice(0, 10), source: 'rattibha' }
+  const t24 = await fromTrends24()
+  if (t24.length >= 8) return { trends: t24.slice(0, 10), source: 'trends24' }
+  const raw = await groundedSearch(trendsSearchPrompt())
+  const gs = (raw || '').split(NL).map((t) => t.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, '').trim()).filter(Boolean).slice(0, 10)
+  const best = rat.length >= t24.length ? rat : t24
+  if (best.length) return { trends: best.slice(0, 10), source: best === rat ? 'rattibha' : 'trends24' }
+  return { trends: gs, source: 'grounded' }
+}
+// Clavier sous le post viral : Copier + Publier sur X + lien Rattibha (tendances).
+function xtrendKeyboard(text: string) {
+  const xBtn = { text: '📤 Publier sur X', url: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) }
+  const top = (text.length <= 256) ? [{ text: '📋 Copier', copy_text: { text } }, xBtn] : [xBtn]
+  return { inline_keyboard: [top, [{ text: '🔎 Voir les tendances (Rattibha)', url: 'https://en.rattibha.com/trends' }]] }
 }
 
 // Post viral/fun sur une tendance X — SANS rapport avec $FRANC (pure visibilité).
@@ -199,33 +264,32 @@ Deno.serve(async (req: Request) => {
   const token = Deno.env.get('BOT_TOKEN')
   if (!token) return new Response('missing config', { status: 500 })
 
-  let category = '', subject = '', owner = 0, action = ''
+  let category = '', subject = '', owner = 0, action = '', debug = false
   try {
     const body = await req.json()
     category = String((body && body.category) || '').toLowerCase()
     subject = String((body && body.subject) || '').trim()
     owner = Number((body && body.owner) || 0)
     action = String((body && body.action) || '')
+    debug = !!(body && body.debug)
   } catch { /* corps invalide */ }
 
-  // /xtrend étape 1 : cherche les 4 tendances X mondiales et propose des boutons.
+  // /xtrend étape 1 : récupère les 10 tendances X mondiales (live) et propose des boutons.
   if (action === 'xtrend_list') {
+    // Mode debug : renvoie directement source + tendances (pour vérifier la source).
+    if (debug) { const r = await fetchTrends(); return new Response(JSON.stringify(r, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
     if (!owner) return new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })
     const bg = (async () => {
       try {
-        const raw = await groundedSearch(trendsSearchPrompt())
-        // Une tendance par ligne ; on retire un éventuel puce/numéro en tête
-        // (mais PAS le # d'un hashtag).
-        const trends = (raw || '').split(NL)
-          .map((t) => t.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, '').trim())
-          .filter(Boolean).slice(0, 4)
+        const { trends, source } = await fetchTrends()
         if (trends.length === 0) { await tg(token, 'sendMessage', { chat_id: owner, text: '🔥 X Trends — impossible de récupérer les tendances pour le moment. Réessaie dans un instant.' }); return }
         const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
         await supabase.from('xtrend_pending').upsert({ owner_id: owner, trends, created_at: new Date().toISOString() })
         const kb = trends.map((t, i) => [{ text: '🔥 ' + t.slice(0, 60), callback_data: 'xt:' + i }])
+        kb.push([{ text: '🔎 Voir sur Rattibha', url: 'https://en.rattibha.com/trends' }])
         await tg(token, 'sendMessage', {
           chat_id: owner, parse_mode: 'HTML',
-          text: '🔥 <b>Top tendances X (monde)</b>\nChoisis-en une, je te rédige un post viral prêt à publier 👇',
+          text: `🔥 <b>Top 10 tendances X (monde)</b> <i>(${source})</i>\nChoisis-en une, je te rédige un post viral prêt à publier 👇`,
           reply_markup: { inline_keyboard: kb },
         })
       } catch (e) { console.error('xtrend_list', String(e)) }
@@ -268,7 +332,7 @@ Deno.serve(async (req: Request) => {
         await tg(token, 'sendMessage', {
           chat_id: owner,
           text: '🔥 <b>Post viral prêt pour X</b>\n<i>Tendance : ' + subject.replace(/</g, '&lt;') + '</i>\n\n' + post + '\n\n<i>Touche « Publier sur X » pour ouvrir X avec le texte pré-rempli.</i>',
-          parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: xShareKeyboard(post),
+          parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: xtrendKeyboard(post),
         })
         return
       }

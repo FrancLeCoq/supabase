@@ -202,10 +202,10 @@ async function handleFrToggle(o: {
     } catch (_) { /* un tick qui échoue ne doit PAS casser le décompte */ }
   }
   const bg = (async () => {
-    // Décompte par pas de 2 s (≈10 éditions au lieu de ~20) → évite le 429 Telegram.
+    // Décompte par pas de 5 s (≈4 éditions) → largement sous la limite Telegram.
     let s = FR_PEEK_SECONDS
     while (s > 0) {
-      const step = s >= 2 ? 2 : 1
+      const step = s >= 5 ? 5 : s
       await peekSleep(step * 1000)
       s -= step
       if (s > 0) await setBtn([...o.frRows, backRow(o.enCb, s)])
