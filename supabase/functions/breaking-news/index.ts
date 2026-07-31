@@ -157,10 +157,12 @@ function htmlDecodeBasic(s: string): string {
     .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
 }
 const TREND_NOISE = /^(home|trends?|login|log in|sign in|sign up|menu|about|privacy|terms|contact|english|worldwide|world|more|search|next|previous|back|rattibha|twitter|x|top|new|help|settings|language)$/i
+// Libellés/rubriques de la page à écarter (sous-chaînes).
+const TREND_NOISE_SUB = /(twitter trends|trending now|worldwide trends|see all|show more|read more|view all|sign in|log in)/i
 function pushTrend(out: string[], seen: Set<string>, t: string) {
   t = htmlDecodeBasic(t).trim()
   if (t.length < 2 || t.length > 50) return
-  if (TREND_NOISE.test(t)) return
+  if (TREND_NOISE.test(t) || TREND_NOISE_SUB.test(t)) return
   const k = t.toLowerCase()
   if (seen.has(k)) return
   seen.add(k); out.push(t)
@@ -199,9 +201,9 @@ async function fromTrends24(): Promise<string[]> {
 // Renvoie jusqu'à 10 tendances live + la source utilisée.
 async function fetchTrends(): Promise<{ trends: string[]; source: string }> {
   const rat = await fromRattibha()
-  if (rat.length >= 8) return { trends: rat.slice(0, 10), source: 'rattibha' }
+  if (rat.length >= 6) return { trends: rat.slice(0, 10), source: 'rattibha' }
   const t24 = await fromTrends24()
-  if (t24.length >= 8) return { trends: t24.slice(0, 10), source: 'trends24' }
+  if (t24.length >= 6) return { trends: t24.slice(0, 10), source: 'trends24' }
   const raw = await groundedSearch(trendsSearchPrompt())
   const gs = (raw || '').split(NL).map((t) => t.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, '').trim()).filter(Boolean).slice(0, 10)
   const best = rat.length >= t24.length ? rat : t24
