@@ -409,12 +409,25 @@ Deno.serve(async (req: Request) => {
   let dryRun = false
   let imgProbe = false
   let probeEn = ''
+  let modelPing = ''
   try {
     const body = await req.json()
     command = String((body && body.command) || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     if (body && body.dryRun === true) dryRun = true
     if (body && body.imgProbe === true) { imgProbe = true; probeEn = String((body && body.en) || '') }
+    if (body && body.modelPing) modelPing = String(body.modelPing)
   } catch { /* corps invalide */ }
+
+  // Diagnostic : vérifie qu'un ID de modèle Gemini répond bien (200 vs 404).
+  if (modelPing) {
+    try {
+      const res = await tfetch(geminiUrl(modelPing), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 1 } }),
+      }, 20000)
+      return new Response(JSON.stringify({ model: modelPing, status: res.status, ok: res.ok }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    } catch (e) { return new Response(JSON.stringify({ model: modelPing, error: String(e) }), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
+  }
 
   // Probe image : rend le PNG à partir d'un texte EN fourni (0 appel Gemini)
   // et renvoie un diagnostic. Sert à valider le rendu sans publier.
