@@ -141,12 +141,21 @@ function xShareKeyboard(text: string) {
   return { inline_keyboard: [row] }
 }
 
+// Régions de tendances X supportées (/xtrend, /xtrendUS, /xtrendFR).
+const TREND_REGIONS: Record<string, { rattibha: string; trends24: string; label: string; flag: string; scope: string }> = {
+  world: { rattibha: 'https://en.rattibha.com/trends', trends24: 'https://trends24.in/', label: 'monde', flag: '🌍', scope: 'worldwide' },
+  us: { rattibha: 'https://en.rattibha.com/trends/united-states', trends24: 'https://trends24.in/united-states/', label: 'US', flag: '🇺🇸', scope: 'in the United States' },
+  fr: { rattibha: 'https://en.rattibha.com/trends/france', trends24: 'https://trends24.in/france/', label: 'France', flag: '🇫🇷', scope: 'in France' },
+}
+function trendRegion(r: string) { return TREND_REGIONS[r] || TREND_REGIONS.world }
+
 // Repli IA (grounded) si la récupération directe échoue.
-function trendsSearchPrompt(): string {
+function trendsSearchPrompt(region: string): string {
+  const r = trendRegion(region)
   return [
-    'Use Google Search to find the CURRENT top worldwide trending topics on X (formerly Twitter) RIGHT NOW (today).',
-    'Check live trend aggregators such as rattibha.com/trends, getdaytrends.com and trends24.in (worldwide).',
-    'Return ONLY the 10 BIGGEST worldwide trends, most important first, ONE per line, each as its short trend name or hashtag (e.g. "#SuperBowl" or "Taylor Swift"). No numbering, no extra words. Exactly 10 lines.',
+    'Use Google Search to find the CURRENT top trending topics on X (formerly Twitter) ' + r.scope + ' RIGHT NOW (today).',
+    'Check live trend aggregators such as ' + r.rattibha + ', getdaytrends.com and ' + r.trends24 + '.',
+    'Return ONLY the 10 BIGGEST trends ' + r.scope + ', most important first, ONE per line, each as its short trend name or hashtag (e.g. "#SuperBowl" or "Taylor Swift"). No numbering, no extra words. Exactly 10 lines.',
   ].join(NL)
 }
 
@@ -169,9 +178,9 @@ function pushTrend(out: string[], seen: Set<string>, t: string) {
 }
 // en.rattibha.com/trends (source demandée). Extrait les objets tendance
 // embarqués (Next data "name":"…") + les hashtags visibles.
-async function fromRattibha(): Promise<string[]> {
+async function fromRattibha(url: string): Promise<string[]> {
   try {
-    const res = await tfetch('https://en.rattibha.com/trends', { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html' } }, 15000)
+    const res = await tfetch(url, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html' } }, 15000)
     if (!res.ok) return []
     const html = await res.text()
     const out: string[] = []; const seen = new Set<string>()
@@ -184,9 +193,9 @@ async function fromRattibha(): Promise<string[]> {
   } catch { return [] }
 }
 // trends24.in (SSR fiable) — repli live si rattibha ne renvoie rien d'exploitable.
-async function fromTrends24(): Promise<string[]> {
+async function fromTrends24(url: string): Promise<string[]> {
   try {
-    const res = await tfetch('https://trends24.in/', { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html' } }, 15000)
+    const res = await tfetch(url, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html' } }, 15000)
     if (!res.ok) return []
     const html = await res.text()
     const i = html.indexOf('trend-card__list')
@@ -198,23 +207,24 @@ async function fromTrends24(): Promise<string[]> {
     return out
   } catch { return [] }
 }
-// Renvoie jusqu'à 10 tendances live + la source utilisée.
-async function fetchTrends(): Promise<{ trends: string[]; source: string }> {
-  const rat = await fromRattibha()
+// Renvoie jusqu'à 10 tendances live + la source utilisée, pour la région donnée.
+async function fetchTrends(region: string): Promise<{ trends: string[]; source: string }> {
+  const r = trendRegion(region)
+  const rat = await fromRattibha(r.rattibha)
   if (rat.length >= 6) return { trends: rat.slice(0, 10), source: 'rattibha' }
-  const t24 = await fromTrends24()
+  const t24 = await fromTrends24(r.trends24)
   if (t24.length >= 6) return { trends: t24.slice(0, 10), source: 'trends24' }
-  const raw = await groundedSearch(trendsSearchPrompt())
+  const raw = await groundedSearch(trendsSearchPrompt(region))
   const gs = (raw || '').split(NL).map((t) => t.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, '').trim()).filter(Boolean).slice(0, 10)
   const best = rat.length >= t24.length ? rat : t24
   if (best.length) return { trends: best.slice(0, 10), source: best === rat ? 'rattibha' : 'trends24' }
   return { trends: gs, source: 'grounded' }
 }
 // Clavier sous le post viral : Copier + Publier sur X + lien Rattibha (tendances).
-function xtrendKeyboard(text: string) {
+function xtrendKeyboard(text: string, rattibhaUrl: string) {
   const xBtn = { text: '📤 Publier sur X', url: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) }
   const top = (text.length <= 256) ? [{ text: '📋 Copier', copy_text: { text } }, xBtn] : [xBtn]
-  return { inline_keyboard: [top, [{ text: '🔎 Voir les tendances (Rattibha)', url: 'https://en.rattibha.com/trends' }]] }
+  return { inline_keyboard: [top, [{ text: '🔎 Voir les tendances (Rattibha)', url: rattibhaUrl }]] }
 }
 
 // Post viral/fun sur une tendance X — SANS rapport avec $FRANC (pure visibilité).
@@ -266,7 +276,7 @@ Deno.serve(async (req: Request) => {
   const token = Deno.env.get('BOT_TOKEN')
   if (!token) return new Response('missing config', { status: 500 })
 
-  let category = '', subject = '', owner = 0, action = '', debug = false
+  let category = '', subject = '', owner = 0, action = '', debug = false, region = 'world'
   try {
     const body = await req.json()
     category = String((body && body.category) || '').toLowerCase()
@@ -274,24 +284,27 @@ Deno.serve(async (req: Request) => {
     owner = Number((body && body.owner) || 0)
     action = String((body && body.action) || '')
     debug = !!(body && body.debug)
+    region = String((body && body.region) || 'world').toLowerCase()
+    if (!TREND_REGIONS[region]) region = 'world'
   } catch { /* corps invalide */ }
 
   // /xtrend étape 1 : récupère les 10 tendances X mondiales (live) et propose des boutons.
   if (action === 'xtrend_list') {
+    const rg = trendRegion(region)
     // Mode debug : renvoie directement source + tendances (pour vérifier la source).
-    if (debug) { const r = await fetchTrends(); return new Response(JSON.stringify(r, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
+    if (debug) { const r = await fetchTrends(region); return new Response(JSON.stringify(r, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
     if (!owner) return new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })
     const bg = (async () => {
       try {
-        const { trends, source } = await fetchTrends()
+        const { trends, source } = await fetchTrends(region)
         if (trends.length === 0) { await tg(token, 'sendMessage', { chat_id: owner, text: '🔥 X Trends — impossible de récupérer les tendances pour le moment. Réessaie dans un instant.' }); return }
         const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-        await supabase.from('xtrend_pending').upsert({ owner_id: owner, trends, created_at: new Date().toISOString() })
+        await supabase.from('xtrend_pending').upsert({ owner_id: owner, trends, region, created_at: new Date().toISOString() })
         const kb = trends.map((t, i) => [{ text: '🔥 ' + t.slice(0, 60), callback_data: 'xt:' + i }])
-        kb.push([{ text: '🔎 Voir sur Rattibha', url: 'https://en.rattibha.com/trends' }])
+        kb.push([{ text: '🔎 Voir sur Rattibha', url: rg.rattibha }])
         await tg(token, 'sendMessage', {
           chat_id: owner, parse_mode: 'HTML',
-          text: `🔥 <b>Top 10 tendances X (monde)</b> <i>(${source})</i>\nChoisis-en une, je te rédige un post viral prêt à publier 👇`,
+          text: `🔥 <b>Top 10 tendances X (${rg.flag} ${rg.label})</b> <i>(${source})</i>\nChoisis-en une, je te rédige un post viral prêt à publier 👇`,
           reply_markup: { inline_keyboard: kb },
         })
       } catch (e) { console.error('xtrend_list', String(e)) }
@@ -334,7 +347,7 @@ Deno.serve(async (req: Request) => {
         await tg(token, 'sendMessage', {
           chat_id: owner,
           text: '🔥 <b>Post viral prêt pour X</b>\n<i>Tendance : ' + subject.replace(/</g, '&lt;') + '</i>\n\n' + post + '\n\n<i>Touche « Publier sur X » pour ouvrir X avec le texte pré-rempli.</i>',
-          parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: xtrendKeyboard(post),
+          parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: xtrendKeyboard(post, trendRegion(region).rattibha),
         })
         return
       }

@@ -116,6 +116,7 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
   // Meme modele de classement pour F1 et MotoGP : pilote - ecurie - points.
   // (Telegram n'affiche pas de vrais logos dans un message texte.)
   const standingsFmt = '<rank emoji> <first-name initial>. <Last name>, <Team> - <points>p'
+  // Les points doivent s'afficher en entiers : "208p" et jamais "208.00p".
   const task: Record<RType, string> = {
     essais: 'Write a punchy summary of the PRACTICE highlights. HARD LIMIT: 280 characters. Lead with the standout fact (fastest driver/rider + key moment). No standings.',
     qualifs: 'Write TWO blocks: (1) a short punchy preamble, MAX 280 CHARACTERS, with the key highlights and who took pole; then a blank line; then (2) the FULL qualifying classification, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team) - time/gap", then "2️⃣ ...", "3️⃣ ...". Use 🔟 for tenth; for positions above ten combine digit emojis (e.g. 1️⃣1️⃣, 1️⃣2️⃣). Never write "P1"/"P2".',
@@ -129,7 +130,7 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
       + '(4) The schedule GROUPED BY DAY, in chronological order, as ONE SINGLE CONTIGUOUS BLOCK with NO blank line between days. For EACH day that has sessions: first a line "👉 <Day> :" (e.g. "👉 Friday :" / "👉 Vendredi :"), then directly BELOW it ONE bullet per session formatted "• <time> UTC – <Session name>". The very next day header comes on the immediately following line (NO empty line separating one day from the next). Use the language time notation (English "14:30", French "14h30"). '
       + '(5) A blank line, then a header line exactly "🏆 World Championship". '
       + '(6) Then the FULL current standings from the facts, ONE line per driver/rider IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣, 1️⃣2️⃣), formatted EXACTLY like this: "' + standingsFmt + '". For the driver/rider name use ONLY the first-name INITIAL + "." + the FULL last name (e.g. "K. Antonelli", "L. Hamilton"). '
-      + 'Keep the exact order, teams and points from the facts. Shorten these team names: "Racing Bulls" -> "Racing B.", "Aston Martin" -> "Aston M.", "Red Bull" -> "Red B.". NO 280-character limit here.',
+      + 'Keep the exact order, teams and points from the facts. Write the points as WHOLE INTEGERS with NO decimals and NO trailing ".0"/".00" (e.g. "208p", never "208.00p"; "87p", never "87.0p"). Shorten these team names: "Racing Bulls" -> "Racing B.", "Aston Martin" -> "Aston M.", "Red Bull" -> "Red B.". NO 280-character limit here.',
     news: 'Write the freshest paddock news as 3 to 5 short punchy bullet points. Each bullet MUST start with "👉 " and be a single sentence. Separate EACH bullet with a BLANK LINE (an empty line between bullets, so they are airy and never glued together). Keep it factual. Max ~600 characters.',
   }
   return [
@@ -207,6 +208,8 @@ async function dmOwner(token: string, text: string) {
 // Raccourcit les noms d'écuries trop longs (garanti, en plus de la consigne IA).
 function shortenTeams(s: string): string {
   return (s || '').split('Racing Bulls').join('Racing B.').split('Aston Martin').join('Aston M.').split('Red Bull').join('Red B.')
+    // Points en entiers : "208.00p" / "87.0 p" -> "208p" / "87p".
+    .replace(/(\d+)\.\d+(\s*p\b)/g, '$1$2')
 }
 
 // -- Coeur : recherche + EN + FR + publication -----------------
@@ -282,8 +285,8 @@ Deno.serve(async (req: Request) => {
     const sportShort = isF1 ? 'F1' : 'MotoGP'
     const type = command.replace('f1', '').replace('gp', '') as RType
     const facts = await groundedSearch(searchPrompt(sportLong, type))
-    const en = facts ? await formatCall(formatPrompt('English', sportShort, type, facts)) : ''
-    const fr = facts ? await formatCall(formatPrompt('French', sportShort, type, facts)) : ''
+    const en = facts ? shortenTeams(await formatCall(formatPrompt('English', sportShort, type, facts))) : ''
+    const fr = facts ? shortenTeams(await formatCall(formatPrompt('French', sportShort, type, facts))) : ''
     return new Response(JSON.stringify({ command, factsLen: facts.length, en, fr }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 

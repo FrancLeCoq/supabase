@@ -585,14 +585,15 @@ Deno.serve(async (req) => {
       if (cb.data.startsWith('xt:')) {
         if (cbUser.id.toString() !== OWNER_ID) return new Response('ok')
         const idx = Number(cb.data.split(':')[1])
-        const { data: row } = await cbSupa.from('xtrend_pending').select('trends').eq('owner_id', cbUser.id).maybeSingle()
+        const { data: row } = await cbSupa.from('xtrend_pending').select('trends, region').eq('owner_id', cbUser.id).maybeSingle()
         const trends: string[] = (row && Array.isArray(row.trends)) ? row.trends : []
+        const region: string = (row && typeof row.region === 'string') ? row.region : 'world'
         const trend = trends[idx]
         if (!trend) { await sendMessage(cbToken, cbUser.id, '⚠️ Tendance introuvable (relance /xtrend).'); return new Response('ok') }
         const cronSecret = Deno.env.get('CRON_SECRET') || ''
         const trigger = fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/breaking-news', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
-          body: JSON.stringify({ category: 'xtrend', subject: trend, owner: Number(cbUser.id) }),
+          body: JSON.stringify({ category: 'xtrend', subject: trend, owner: Number(cbUser.id), region }),
         }).catch((e) => console.error('xtrend gen:', String(e)))
         ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
         try { await cbSupa.from('xtrend_pending').delete().eq('owner_id', cbUser.id) } catch (_) { /* ok */ }
@@ -943,19 +944,29 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    //  /xtrend (OWNER) — post viral prêt pour X sur une tendance mondiale.
-    //  Le bot cherche les 4 plus grosses tendances X, tu en choisis une, l'IA
+    //  /xtrend (OWNER) — post viral prêt pour X sur une tendance X.
+    //  Le bot cherche les 10 plus grosses tendances X, tu en choisis une, l'IA
     //  rédige un post viral (hors $FRANC) + bouton « Publier sur X ». Clé en main.
+    //  Variantes régionales + pluriels tolérés :
+    //   monde : /xtrend /xtrends        US : /xtrendUS /xtrendsUS
+    //   France : /xtrendFR /xtrendsFR
     // ══════════════════════════════════════════════════════════
-    if (text === '/xtrend') {
+    const xcmd = text.toLowerCase().split(/[\s@]/)[0]
+    const xtrendRegion =
+      (xcmd === '/xtrend' || xcmd === '/xtrends') ? 'world'
+      : (xcmd === '/xtrendus' || xcmd === '/xtrendsus') ? 'us'
+      : (xcmd === '/xtrendfr' || xcmd === '/xtrendsfr') ? 'fr'
+      : null
+    if (xtrendRegion) {
       if (userId !== OWNER_ID) return new Response('ok')
+      const rLabel = xtrendRegion === 'us' ? '🇺🇸 US' : xtrendRegion === 'fr' ? '🇫🇷 France' : '🌍 monde'
       const cronSecret = Deno.env.get('CRON_SECRET') || ''
       const trigger = fetch('https://mubqtnqulpyehkgubhnh.supabase.co/functions/v1/breaking-news', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
-        body: JSON.stringify({ action: 'xtrend_list', owner: Number(userId) }),
+        body: JSON.stringify({ action: 'xtrend_list', owner: Number(userId), region: xtrendRegion }),
       }).catch((e) => console.error('xtrend list:', String(e)))
       ;(globalThis as any).EdgeRuntime?.waitUntil?.(trigger)
-      await sendMessage(token, chatId, '🔥 <b>X Trends</b> — ⏳ je cherche les plus grosses tendances mondiales…')
+      await sendMessage(token, chatId, `🔥 <b>X Trends</b> (${rLabel}) — ⏳ je cherche les plus grosses tendances…`)
       return new Response('ok')
     }
 
@@ -1023,7 +1034,10 @@ Deno.serve(async (req) => {
         `/F1course · /GPcourse — Course (GP)\n/F1we · /GPwe — Programme du week-end\n/F1news · /GPnews — Potins paddock\n\n` +
         `<b>3️⃣ Breaking news perso</b>\n` +
         `/f1 — Breaking news F1\n/motogp — Breaking news MotoGP\n/worldroost — Breaking news World Roost\n` +
-        `/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n/xtrend — Post viral sur une tendance X\n\n` +
+        `/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n` +
+        `/xtrend — Post viral sur une tendance X (🌍 monde)\n` +
+        `/xtrendUS — Post viral tendance X (🇺🇸 US)\n/xtrendFR — Post viral tendance X (🇫🇷 France)\n` +
+        `<i>(pluriels aussi ok : /xtrends, /xtrendsUS, /xtrendsFR)</i>\n\n` +
         `<b>4️⃣ Textes pour X</b>\n` +
         `/xf1 — Post X F1\n/xmotogp — Post X MotoGP\n/xcrypto — Post X Crypto\n` +
         `/xnews — Post X actu internationale\n/xfranc — Post X $FRANC (CA + liens)\n\n` +
