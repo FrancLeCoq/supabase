@@ -11,14 +11,13 @@ import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, as
 
 // Libellé lisible d'un scope de pause par utilisateur.
 function pauseScopeLabel(scope: string): string {
-  return scope === 'poulailler' ? 'Le Poulailler'
-    : scope === 'chickencoop' ? 'The Chicken Coop'
+  return scope === 'chickencoop' ? 'The Chicken Coop'
     : 'les échanges individuels (DM + Business)'
 }
-import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, POULAILLER_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SOLITAIRE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
+import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SOLITAIRE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
-import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, POULAILLER_FR, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mentionsOldTestCa, mirrorEnSetup, mirrorFrSetup, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
+import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mentionsOldTestCa, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
 import { getAccess, getFrancBalance, getLang, isValidSolana, isValidTon, setLang, statusText } from './wallet.ts'
 
 // ══════════════════════════════════════════════════════════════
@@ -64,8 +63,8 @@ async function sendSpicyInvite(token: string, userId: number, isFR: boolean): Pr
 // ══════════════════════════════════════════════════════════════
 //  MESSAGES DE BIENVENUE (nouveaux arrivants, postés DANS le groupe)
 //   • Golden Rooster : version adaptée selon que la personne est déjà
-//     membre de Coop/Poulailler (vérif individuelle à l'arrivée).
-//   • The Chicken Coop (EN) / Le Poulailler (FR) : accueil + accès au bot.
+//     membre de The Chicken Coop (vérif individuelle à l'arrivée).
+//   • The Chicken Coop : accueil + accès au bot (au 1er GM/hi).
 // ══════════════════════════════════════════════════════════════
 const ALL_GAMES_BTN = { text: 'All games & Rooster universe', url: MENU_DEEPLINK }
 
@@ -107,17 +106,6 @@ function grWelcomeMember(m: string) {
       `Préparez-vous à découvrir un espace rempli de contenu exclusif 🔞 et de nombreuses surprises.\n\n` +
       `🎮 Envie d'aller encore plus loin ? Discutez avec notre bot (lien ci-dessous) pour débloquer encore plus de jeux, de fonctionnalités et de contenus exclusifs.\n\n` +
       `✨ <b>Tout est gratuit, alors profitez-en !</b>`,
-    reply_markup: { inline_keyboard: [[ ALL_GAMES_BTN ]] },
-  }
-}
-
-// Le Poulailler (FR).
-function poulWelcome(m: string) {
-  return {
-    text:
-      `🤩 <b>Bienvenue ${m} dans Le Poulailler !</b> 🐓\n\n` +
-      `Préparez-vous à découvrir un espace rempli d'actualités, de jeux, de contenu exclusif et de nombreuses surprises chaque jour. 👀\n\n` +
-      `🎮 Envie d'aller encore plus loin ? Discutez avec notre bot (lien ci-dessous) pour débloquer encore plus de jeux, de fonctionnalités et de contenus exclusifs. 🚀`,
     reply_markup: { inline_keyboard: [[ ALL_GAMES_BTN ]] },
   }
 }
@@ -888,11 +876,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // Préférence de langue : lue en privé ; en groupe, français pour « Le Poulailler »,
-    // anglais pour « The Chicken Coop » (les réponses boutons/CA suivent la langue du groupe).
+    // Préférence de langue : lue en privé. Dans The Chicken Coop (groupe bilingue),
+    // les réponses « canned » (boutons/CA) sont en anglais par défaut ; l'IA de
+    // Francis, elle, répond dans la langue du message (voir francis-ai).
     const isFR = (msg.chat?.type === 'private')
       ? (await getLang(supabase, userId) === 'fr')
-      : (chatId === POULAILLER_FR)
+      : false
     const tr = (fr: string, en: string) => isFR ? fr : en
 
     // ══════════════════════════════════════════════════════════
@@ -1078,18 +1067,16 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    //  PAUSE / REPRISE de Francis IA dans les groupes
+    //  PAUSE / REPRISE de Francis IA dans The Chicken Coop
     //  À taper dans le bot en privé (réservé au owner) :
-    //   /stopbotpoulailler · /playbotpoulailler
     //   /stopbotchickencoop · /playbotchickencoop
     //  Coupe / relance les réponses auto de Francis quand les
     //  membres discutent entre eux et n'ont pas besoin du bot.
     // ══════════════════════════════════════════════════════════
-    if (text === '/stopbotpoulailler' || text === '/playbotpoulailler' ||
-        text === '/stopbotchickencoop' || text === '/playbotchickencoop') {
+    if (text === '/stopbotchickencoop' || text === '/playbotchickencoop') {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement
-      const target = text.includes('poulailler') ? POULAILLER_FR : CHICKEN_COOP
-      const groupName = target === POULAILLER_FR ? 'Le Poulailler' : 'The Chicken Coop'
+      const target = CHICKEN_COOP
+      const groupName = 'The Chicken Coop'
       const paused = text.startsWith('/stop')
       await supabase.from('bot_pause')
         .upsert({ chat_id: target, paused, updated_at: new Date().toISOString() }, { onConflict: 'chat_id' })
@@ -1119,14 +1106,14 @@ Deno.serve(async (req) => {
 
     // ══════════════════════════════════════════════════════════
     //  PAUSE / REPRISE par UTILISATEUR (owner, en privé)
-    //  /stopbotuser · /stopbotpoulailleruser · /stopbotchickencoopuser
+    //  /stopbotuser · /stopbotchickencoopuser
     //     → le bot demande le pseudo, puis coupe Francis pour cet user.
-    //  /playbotuser · /playbotpoulailleruser · /playbotchickencoopuser
+    //  /playbotuser · /playbotchickencoopuser
     //     → le bot liste les users en pause (boutons) pour réactiver.
     // ══════════════════════════════════════════════════════════
-    if (text === '/stopbotuser' || text === '/stopbotpoulailleruser' || text === '/stopbotchickencoopuser') {
+    if (text === '/stopbotuser' || text === '/stopbotchickencoopuser') {
       if (userId !== OWNER_ID) return new Response('ok')
-      const scope = text.includes('poulailler') ? 'poulailler' : text.includes('chickencoop') ? 'chickencoop' : 'dm'
+      const scope = text.includes('chickencoop') ? 'chickencoop' : 'dm'
       await supabase.from('admin_pending')
         .upsert({ owner_id: userId, action: 'stopuser:' + scope, created_at: new Date().toISOString() }, { onConflict: 'owner_id' })
       await sendMessage(token, chatId,
@@ -1134,9 +1121,9 @@ Deno.serve(async (req) => {
       return new Response('ok')
     }
 
-    if (text === '/playbotuser' || text === '/playbotpoulailleruser' || text === '/playbotchickencoopuser') {
+    if (text === '/playbotuser' || text === '/playbotchickencoopuser') {
       if (userId !== OWNER_ID) return new Response('ok')
-      const scope = text.includes('poulailler') ? 'poulailler' : text.includes('chickencoop') ? 'chickencoop' : 'dm'
+      const scope = text.includes('chickencoop') ? 'chickencoop' : 'dm'
       const { data: rows } = await supabase.from('user_pause')
         .select('username').eq('scope', scope).eq('paused', true).order('added_at')
       if (!rows || rows.length === 0) {
@@ -1177,7 +1164,7 @@ Deno.serve(async (req) => {
         await supabase.from('user_pause')
           .upsert({ scope, username: uname, paused: true, added_at: new Date().toISOString() }, { onConflict: 'scope,username' })
         await sendMessage(token, chatId,
-          `⏸️ Francis ne répondra plus à <b>@${uname}</b> dans <b>${pauseScopeLabel(scope)}</b>.\n(<code>/playbot${scope === 'poulailler' ? 'poulailler' : scope === 'chickencoop' ? 'chickencoop' : ''}user</code> pour réactiver.)`)
+          `⏸️ Francis ne répondra plus à <b>@${uname}</b> dans <b>${pauseScopeLabel(scope)}</b>.\n(<code>/playbot${scope === 'chickencoop' ? 'chickencoop' : ''}user</code> pour réactiver.)`)
         return new Response('ok')
       }
     }
@@ -1296,11 +1283,11 @@ Deno.serve(async (req) => {
     // NB : les libellés de boutons du clavier (jeux, Coop, Poulailler…) sont EXCLUS
     // de ce bloc → ils filent vers leurs handlers plus bas (sinon ils étaient avalés
     // ici et « il ne se passait rien » quand on cliquait dans le groupe).
-    if ((chatId === CHICKEN_COOP || chatId === POULAILLER_FR)
+    if (chatId === CHICKEN_COOP
         && !text.startsWith('/setup')
         && !isKeyboardButton(text)) {
 
-      const grpLang: 'en' | 'fr' = (chatId === POULAILLER_FR) ? 'fr' : 'en'
+      const grpLang: 'en' | 'fr' = 'en'
 
       // Owner toujours autorisé
       if (userId === OWNER_ID) return new Response('ok')
@@ -1395,7 +1382,7 @@ Deno.serve(async (req) => {
             if (pauseRow?.paused) return new Response('ok')
           } catch (_) { /* pas de ligne / table injoignable → on considère actif */ }
           // Utilisateur précis mis en pause dans CE groupe (/stopbot…user) ?
-          if (await isUserPaused(supabase, chatId === POULAILLER_FR ? 'poulailler' : 'chickencoop', msg.from.username)) return new Response('ok')
+          if (await isUserPaused(supabase, 'chickencoop', msg.from.username)) return new Response('ok')
           const grpKey = 'grp:' + chatId
           await saveChatMemory(supabase, grpKey, 'user', rawText)   // contexte immédiat (batch + cohérence)
           // CA impératif : envoi déterministe dans le topic (dédup 60s).
