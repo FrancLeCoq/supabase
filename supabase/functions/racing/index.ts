@@ -298,11 +298,12 @@ Deno.serve(async (req: Request) => {
   let dryRun = false
   let imgProbe = false
   let probeEn = ''
+  let probeB64 = false
   try {
     const body = await req.json()
     command = String((body && body.command) || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     if (body && body.dryRun === true) dryRun = true
-    if (body && body.imgProbe === true) { imgProbe = true; probeEn = String((body && body.en) || '') }
+    if (body && body.imgProbe === true) { imgProbe = true; probeEn = String((body && body.en) || ''); probeB64 = !!(body && body.b64) }
   } catch { /* corps invalide */ }
 
   // Probe image : rend le PNG à partir d'un texte EN fourni (0 appel Gemini)
@@ -314,7 +315,13 @@ Deno.serve(async (req: Request) => {
     const kind = type === 'course' ? 'course' : 'we'
     const rows = parseStandings(probeEn, kind)
     const png = await renderStandingsPng(probeEn, kind, isF1, sportShort)
-    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, rows: rows.slice(0, 3), pngBytes: png ? png.length : 0 }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    let pngB64 = ''
+    if (probeB64 && png) {
+      let bin = ''
+      for (let i = 0; i < png.length; i += 8192) bin += String.fromCharCode(...png.subarray(i, i + 8192))
+      pngB64 = btoa(bin)
+    }
+    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, rows: rows.slice(0, 3), pngBytes: png ? png.length : 0, pngB64 }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   if (!VALID.has(command)) return new Response(JSON.stringify({ error: 'unknown command', command }), { status: 400, headers: { 'Content-Type': 'application/json' } })
