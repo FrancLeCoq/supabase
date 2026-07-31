@@ -18,6 +18,8 @@
 //  Securite : header x-cron-secret == CRON_SECRET.
 // ================================================================
 
+import { renderStandingsPng, parseStandings } from './standings-image.ts'
+
 const NL = String.fromCharCode(10)
 
 // Recherche grounded : 2.5-flash en primaire (le moins charge par
@@ -204,6 +206,27 @@ async function pinMessage(token: string, chatId: number, messageId: number): Pro
 async function dmOwner(token: string, text: string) {
   try { await post(token, OWNER_ID, text, 0) } catch { /* ignore */ }
 }
+// Envoi d'une image PNG (classement) via sendPhoto (multipart). Best-effort.
+async function sendPhotoBytes(token: string, chatId: number, png: Uint8Array, threadId: number): Promise<number> {
+  try {
+    const form = new FormData()
+    form.append('chat_id', String(chatId))
+    if (threadId) form.append('message_thread_id', String(threadId))
+    form.append('photo', new Blob([png], { type: 'image/png' }), 'standings.png')
+    const res = await tfetch('https://api.telegram.org/bot' + token + '/sendPhoto', { method: 'POST', body: form }, 20000)
+    const data = await res.json()
+    if (!data || !data.ok) { console.error('racing sendPhoto:', JSON.stringify(data).slice(0, 200)); return 0 }
+    return Number(data.result && data.result.message_id) || 0
+  } catch (e) { console.error('racing sendPhoto exception', String(e)); return 0 }
+}
+// Génère + envoie le PNG du classement (course + week-end uniquement). Best-effort.
+async function maybeSendStandingsImage(token: string, enText: string, type: RType, isF1: boolean, sportShort: string): Promise<void> {
+  if (type !== 'we' && type !== 'course') return
+  try {
+    const png = await renderStandingsPng(enText, type === 'we' ? 'we' : 'course', isF1, sportShort)
+    if (png && png.length > 0) await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN)
+  } catch (e) { console.error('racing standings image', String(e)) }
+}
 
 // Raccourcit les noms d'écuries trop longs (garanti, en plus de la consigne IA).
 function shortenTeams(s: string): string {
@@ -246,6 +269,8 @@ async function runCommand(token: string, command: string): Promise<void> {
     const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN, NLANG_BTN)
     if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
     if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
+    // Classement en image (course + week-end) : texte d'abord, PNG juste après.
+    await maybeSendStandingsImage(token, en, type, isF1, sportShort)
     // Copie EN -> owner (pour coller sur X). Sans lien (CTA en commentaire via /xf1…).
     await dmOwnerCopy(token, enMsg)
   } else { console.error('racing[' + command + '] EN vide/NONE') }
@@ -271,11 +296,26 @@ Deno.serve(async (req: Request) => {
 
   let command = ''
   let dryRun = false
+  let imgProbe = false
+  let probeEn = ''
   try {
     const body = await req.json()
     command = String((body && body.command) || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     if (body && body.dryRun === true) dryRun = true
+    if (body && body.imgProbe === true) { imgProbe = true; probeEn = String((body && body.en) || '') }
   } catch { /* corps invalide */ }
+
+  // Probe image : rend le PNG à partir d'un texte EN fourni (0 appel Gemini)
+  // et renvoie un diagnostic. Sert à valider le rendu sans publier.
+  if (imgProbe) {
+    const isF1 = command.startsWith('f1')
+    const sportShort = isF1 ? 'F1' : 'MotoGP'
+    const type = (command.replace('f1', '').replace('gp', '') || 'we') as RType
+    const kind = type === 'course' ? 'course' : 'we'
+    const rows = parseStandings(probeEn, kind)
+    const png = await renderStandingsPng(probeEn, kind, isF1, sportShort)
+    return new Response(JSON.stringify({ isF1, kind, rowsParsed: rows.length, rows: rows.slice(0, 3), pngBytes: png ? png.length : 0 }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
 
   if (!VALID.has(command)) return new Response(JSON.stringify({ error: 'unknown command', command }), { status: 400, headers: { 'Content-Type': 'application/json' } })
 
