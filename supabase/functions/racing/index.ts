@@ -436,7 +436,8 @@ Deno.serve(async (req: Request) => {
   // peut désactiver le "thinking" qui tronque parfois la sortie).
   if (genTest && genTest.model && genTest.prompt) {
     try {
-      const gc: any = { temperature: 0.3, maxOutputTokens: genTest.maxOutputTokens || 2048 }
+      const gc: any = { temperature: 0.3 }
+      if (genTest.maxOutputTokens !== 'none') gc.maxOutputTokens = genTest.maxOutputTokens || 2048
       if (genTest.thinkingBudget !== undefined) gc.thinkingConfig = { thinkingBudget: genTest.thinkingBudget }
       const res = await tfetch(geminiUrl(genTest.model), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
