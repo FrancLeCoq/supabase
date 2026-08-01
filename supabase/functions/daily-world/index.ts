@@ -273,15 +273,38 @@ async function generateWorldNight(): Promise<{ ok: boolean; frText: string; reas
   return { ok: false, frText: '', reason: 'format inattendu' }
 }
 
-// Vrai si `out` est une traduction plausible de `src` : ni vide, ni tronquée
-// (< 40% de la source), ni un simple écho (même début → langue non changée).
+// Vrai si `out` est une traduction PLAUSIBLE de `src` : ni vide, ni tronquée
+// (< 40 %), ni un écho, ni SOUS-TRADUITE (trop de lignes restées identiques).
 function translationLooksValid(src: string, out: string): boolean {
   if (!out) return false
   const norm = (s: string) => s.toLowerCase().replace(/[^a-zà-ÿ]/gi, '')
   const ns = norm(src), no = norm(out)
   if (no.length < ns.length * 0.4) return false
-  if (ns.length >= 20 && no.slice(0, 30) === ns.slice(0, 30)) return false
+  const lines = src.split(NL).map((l) => l.trim()).filter((l) => norm(l).length >= 12)
+  if (lines.length >= 3) {
+    const outSet = new Set(out.split(NL).map((l) => l.trim()))
+    let same = 0; for (const l of lines) if (outSet.has(l)) same++
+    if (same / lines.length > 0.5) return false   // contenu resté dans la langue source
+  }
   return true
+}
+// Traduction fiable : essaie chaque modèle (3.5-lite puis 3.1-lite) et renvoie la
+// PREMIÈRE sortie réellement traduite ; à défaut, la meilleure disponible.
+async function translateReliable(prompt: string, src: string, temperature = 0.3): Promise<string> {
+  let best = ''
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
+      }, 25000)
+      if (!res.ok) continue
+      const out = extractText(await res.json())
+      if (out && out.length > best.length) best = out
+      if (translationLooksValid(src, out)) return out
+    } catch (e) { console.error('translateReliable', model, String(e)) }
+  }
+  return best
 }
 
 // -- Traduction EN (le francais est la source) -----------------
@@ -291,12 +314,13 @@ async function translateToEnglish(frBody: string): Promise<string> {
     'RULES:',
     '- Keep ALL emojis exactly where they are, and keep the same line breaks / layout.',
     '- Do NOT translate or alter: numbers, %, prices, URLs, and proper names (people, places, companies, products).',
+    '- Translate the ENTIRE message into English (every sentence). Nothing meaningful should stay in French.',
     '- Natural, clear English, no robotic tone. Output ONLY the translated message, nothing else.',
     '',
     'MESSAGE:',
     frBody,
   ].join(NL)
-  return await formatCall(prompt, 0.3)
+  return await translateReliable(prompt, frBody, 0.3)
 }
 
 // -- Telegram --------------------------------------------------
@@ -430,8 +454,7 @@ Deno.serve(async (req: Request) => {
       const fr = result.frText
       // Traduction EN avant de poster, pour pré-enregistrer les DEUX versions.
       const frBody = fr.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
-      let enBody = await translateToEnglish(frBody)
-      if (!translationLooksValid(frBody, enBody)) enBody = await translateToEnglish(frBody) // 1 réessai
+      const enBody = await translateToEnglish(frBody)   // essaie 3.5 puis 3.1, valide chaque sortie
       // Traduction valide → EN (en-tête EN + corps EN). Sinon repli COHÉRENT sur le
       // FR complet (jamais d'en-tête EN collé à un corps FR).
       const en = translationLooksValid(frBody, enBody) ? (hookEn + NL + NL + enBody) : fr

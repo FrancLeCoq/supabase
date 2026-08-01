@@ -122,6 +122,15 @@ async function generateFact(): Promise<{ ok: boolean; text: string; reason: stri
   return { ok: false, text: '', reason: lastReason }
 }
 
+// Vrai si `out` est une traduction PLAUSIBLE de `src` (ni vide, ni tronquée, ni écho).
+function translationLooksValid(src: string, out: string): boolean {
+  if (!out) return false
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-zà-ÿ]/gi, '')
+  const ns = norm(src), no = norm(out)
+  if (no.length < ns.length * 0.4) return false
+  if (ns.length >= 20 && no.slice(0, 30) === ns.slice(0, 30)) return false   // écho
+  return true
+}
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram message into natural, fluent FRENCH for a French-speaking community.',
@@ -129,11 +138,14 @@ async function translateToFrench(text: string): Promise<string> {
     '- Keep ALL emojis exactly where they are, and keep the same line breaks / layout.',
     '- Do NOT translate or alter: "$FRANC", ticker symbols, numbers, %, prices, URLs, coin/person/product/game names.',
     '- "Did you know?" -> "Le saviez-vous ?".',
+    '- Translate the ENTIRE message into French (every sentence). Nothing meaningful should stay in English.',
     '- Natural French, no robotic tone. Output ONLY the translated message, nothing else.',
     '',
     'MESSAGE:',
     text,
   ].join(NL)
+  // Essaie chaque modèle et renvoie la 1re sortie réellement traduite ; sinon la meilleure.
+  let best = ''
   for (const model of GEN_MODELS) {
     try {
       const res = await tfetch(geminiUrl(model), {
@@ -144,10 +156,11 @@ async function translateToFrench(text: string): Promise<string> {
       if (res.status === 429) { console.warn('translateToFrench 429 ' + model); continue }
       if (!res.ok) { console.error('translateToFrench HTTP', res.status, model); continue }
       const out = extractText(await res.json())
-      if (out) return out
+      if (out && out.length > best.length) best = out
+      if (translationLooksValid(text, out)) return out
     } catch (e) { console.error('translateToFrench exception', model, String(e)) }
   }
-  return ''
+  return best
 }
 
 // -- Telegram + bandeau ----------------------------------------
@@ -267,7 +280,7 @@ Deno.serve(async (req: Request) => {
       const en = result.text
       const img = imageUrl()
       const fr = await translateToFrench(en)
-      const frText = fr || en
+      const frText = translationLooksValid(en, fr) ? fr : en             // repli cohérent (EN)
       await postI18n(botToken, chatId, img, 'en', en, frText)            // EN (défaut) -> The Chicken Coop, General (bouton 🇬🇧/🇫🇷)
       // Poulailler supprimé : plus d'envoi FR séparé (FR via le bouton du Coop).
       await dmOwnerCopy(botToken, en)          // copie EN -> owner (pour X, sans lien)

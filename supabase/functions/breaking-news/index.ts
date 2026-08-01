@@ -256,25 +256,49 @@ function xtrendPrompt(trend: string, facts: string): string {
   ].join(NL)
 }
 
-// Vrai si `out` est une traduction plausible de `src` : ni vide, ni tronquée
-// (< 40% de la source), ni un simple écho (même début → langue non changée).
+// Vrai si `out` est une traduction PLAUSIBLE de `src` : ni vide, ni tronquée
+// (< 40 %), ni un écho, ni SOUS-TRADUITE (trop de lignes restées identiques).
 function translationLooksValid(src: string, out: string): boolean {
   if (!out) return false
   const norm = (s: string) => s.toLowerCase().replace(/[^a-zà-ÿ]/gi, '')
   const ns = norm(src), no = norm(out)
   if (no.length < ns.length * 0.4) return false
-  if (ns.length >= 20 && no.slice(0, 30) === ns.slice(0, 30)) return false
+  const lines = src.split(NL).map((l) => l.trim()).filter((l) => norm(l).length >= 12)
+  if (lines.length >= 3) {
+    const outSet = new Set(out.split(NL).map((l) => l.trim()))
+    let same = 0; for (const l of lines) if (outSet.has(l)) same++
+    if (same / lines.length > 0.5) return false
+  }
   return true
+}
+// Traduction fiable : essaie chaque modèle (3.5-lite puis 3.1-lite) et renvoie la
+// PREMIÈRE sortie réellement traduite ; à défaut, la meilleure disponible.
+async function translateReliable(prompt: string, src: string, temperature = 0.3): Promise<string> {
+  let best = ''
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
+      }, 25000)
+      if (!res.ok) continue
+      const out = extractText(await res.json())
+      if (out && out.length > best.length) best = out
+      if (translationLooksValid(src, out)) return out
+    } catch (e) { console.error('translateReliable', model, String(e)) }
+  }
+  return best
 }
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram breaking-news message into natural, fluent FRENCH.',
     '- Keep ALL emojis and the same layout.',
     '- Do NOT translate proper names, tickers, URLs or numbers.',
+    '- Translate the ENTIRE message into French (every sentence). Nothing meaningful should stay in English.',
     '- Output ONLY the translated message, nothing else.',
     '', 'MESSAGE:', text,
   ].join(NL)
-  return await formatCall(prompt, 0.3)
+  return await translateReliable(prompt, text, 0.3)
 }
 
 async function tg(token: string, method: string, body: Record<string, any>) {
@@ -374,9 +398,8 @@ Deno.serve(async (req: Request) => {
         await tg(token, 'sendMessage', { chat_id: owner, text: '🚨 Breaking news — impossible de rédiger. Réessaie avec un sujet plus précis.' })
         return
       }
-      let fr = await translateToFrench(en)
-      if (!translationLooksValid(en, fr)) fr = await translateToFrench(en)   // 1 réessai
-      if (!translationLooksValid(en, fr)) fr = en   // repli cohérent (EN) si trad ratée
+      const frRaw = await translateToFrench(en)   // essaie 3.5 puis 3.1, valide chaque sortie
+      const fr = translationLooksValid(en, frRaw) ? frRaw : en   // repli cohérent (EN) si trad ratée
 
       const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       await supabase.from('breaking_pending').upsert(

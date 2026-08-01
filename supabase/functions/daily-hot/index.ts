@@ -287,18 +287,52 @@ async function generateHot(src: HotSource): Promise<{ ok: boolean; text: string;
   return { ok: true, text: HOT_HOOK_EN + NL + NL + splitAccroche(bodyRaw), image: items[idx].image || '', title: items[idx].title, reason: '' }
 }
 
+// Vrai si `out` est une traduction PLAUSIBLE de `src` : ni vide, ni tronquée
+// (< 40 %), ni un écho, ni SOUS-TRADUITE (trop de lignes restées identiques).
+function translationLooksValid(src: string, out: string): boolean {
+  if (!out) return false
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-zà-ÿ]/gi, '')
+  const ns = norm(src), no = norm(out)
+  if (no.length < ns.length * 0.4) return false
+  const lines = src.split(NL).map((l) => l.trim()).filter((l) => norm(l).length >= 12)
+  if (lines.length >= 3) {
+    const outSet = new Set(out.split(NL).map((l) => l.trim()))
+    let same = 0; for (const l of lines) if (outSet.has(l)) same++
+    if (same / lines.length > 0.5) return false
+  }
+  return true
+}
+// Traduction fiable : essaie chaque modèle (3.5-lite puis 3.1-lite) et renvoie la
+// PREMIÈRE sortie réellement traduite ; à défaut, la meilleure disponible.
+async function translateReliable(prompt: string, src: string, temperature = 0.3): Promise<string> {
+  let best = ''
+  for (const model of FORMAT_MODELS) {
+    try {
+      const res = await tfetch(geminiUrl(model), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
+      }, 25000)
+      if (!res.ok) continue
+      const out = extractText(await res.json())
+      if (out && out.length > best.length) best = out
+      if (translationLooksValid(src, out)) return out
+    } catch (e) { console.error('translateReliable', model, String(e)) }
+  }
+  return best
+}
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram message into natural, fluent FRENCH for a French-speaking community.',
     'RULES:',
     '- Keep ALL emojis exactly where they are, and keep the same line breaks / layout.',
     '- Keep it tasteful and news-like. Do NOT translate or alter proper names, URLs, numbers.',
+    '- Translate the ENTIRE message into French (every sentence). Nothing meaningful should stay in English.',
     '- Natural French. Output ONLY the translated message, nothing else.',
     '',
     'MESSAGE:',
     text,
   ].join(NL)
-  return await formatCall(prompt, 0.3)
+  return await translateReliable(prompt, text, 0.3)
 }
 
 // -- Telegram --------------------------------------------------
@@ -383,8 +417,9 @@ Deno.serve(async (req: Request) => {
       // par défaut en anglais + bouton 🇬🇧/🇫🇷 PRÉ-ENREGISTRÉ (bascule instantanée,
       // sans appel Gemini). Uniquement dans Golden Rooster.
       const en = result.text
-      const fr = await translateToFrench(en)
-      await postI18n(botToken, GR_CHAT_ID, GR_THREAD_HOT, img, 'en', en, fr || en)
+      const frRaw = await translateToFrench(en)
+      const fr = translationLooksValid(en, frRaw) ? frRaw : en   // repli cohérent (EN)
+      await postI18n(botToken, GR_CHAT_ID, GR_THREAD_HOT, img, 'en', en, fr)
       await logDailyTopic(result.title || en)   // titre source = cle d'unicite 72h
       await markSent(slot)
       console.log('daily-hot poste (prive):', result.text.slice(0, 80))
