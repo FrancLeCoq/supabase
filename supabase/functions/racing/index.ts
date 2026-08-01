@@ -410,12 +410,14 @@ Deno.serve(async (req: Request) => {
   let imgProbe = false
   let probeEn = ''
   let modelPing = ''
+  let genTest: any = null
   try {
     const body = await req.json()
     command = String((body && body.command) || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     if (body && body.dryRun === true) dryRun = true
     if (body && body.imgProbe === true) { imgProbe = true; probeEn = String((body && body.en) || '') }
     if (body && body.modelPing) modelPing = String(body.modelPing)
+    if (body && body.genTest) genTest = body.genTest
   } catch { /* corps invalide */ }
 
   // Diagnostic : vérifie qu'un ID de modèle Gemini répond bien (200 vs 404).
@@ -427,6 +429,24 @@ Deno.serve(async (req: Request) => {
       }, 20000)
       return new Response(JSON.stringify({ model: modelPing, status: res.status, ok: res.ok }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     } catch (e) { return new Response(JSON.stringify({ model: modelPing, error: String(e) }), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
+  }
+
+  // Diagnostic génération : teste un prompt sur un modèle, renvoie finishReason +
+  // longueur + tête/queue du texte. thinkingBudget optionnel (pour tester si on
+  // peut désactiver le "thinking" qui tronque parfois la sortie).
+  if (genTest && genTest.model && genTest.prompt) {
+    try {
+      const gc: any = { temperature: 0.3, maxOutputTokens: genTest.maxOutputTokens || 2048 }
+      if (genTest.thinkingBudget !== undefined) gc.thinkingConfig = { thinkingBudget: genTest.thinkingBudget }
+      const res = await tfetch(geminiUrl(genTest.model), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: genTest.prompt }] }], generationConfig: gc }),
+      }, 30000)
+      const raw = await res.text()
+      let out = ''; let finish = ''
+      try { const d = JSON.parse(raw); const c = d?.candidates?.[0]; finish = c?.finishReason || ''; out = (c?.content?.parts || []).map((p: any) => p?.text || '').join('') } catch { /* raw */ }
+      return new Response(JSON.stringify({ status: res.status, finishReason: finish, len: out.length, head: out.slice(0, 160), tail: out.slice(-160), rawHead: res.ok ? '' : raw.slice(0, 300) }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    } catch (e) { return new Response(JSON.stringify({ error: String(e) }), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
   }
 
   // Probe image : rend le PNG à partir d'un texte EN fourni (0 appel Gemini)
