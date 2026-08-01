@@ -44,7 +44,7 @@ async function generate(prompt: string): Promise<string> {
       const res = await tfetch(geminiUrl(model), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1.0 } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1.0, maxOutputTokens: 2048 } }),
       }, 20000)
       if (res.status === 429) { console.warn('daily-general generate 429 ' + model); continue }
       if (!res.ok) { console.error('daily-general generate HTTP', res.status, model); continue }

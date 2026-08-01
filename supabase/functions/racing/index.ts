@@ -90,7 +90,7 @@ async function formatCall(prompt: string): Promise<string> {
       const res = await tfetch(geminiUrl(model), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 2048 } }),
       }, 25000)
       if (res.status === 429) { console.warn('racing formatCall 429 ' + model); continue }
       if (!res.ok) { console.error('racing formatCall HTTP', res.status, model); continue }

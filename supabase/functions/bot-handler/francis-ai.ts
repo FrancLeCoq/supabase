@@ -211,7 +211,7 @@ export async function askFrancisAI(userMessage: string, lang: 'en' | 'fr' = 'en'
     // modèle garde son plafond par défaut (très large). Le cadrage de
     // longueur (280 caractères max, en limite haute) est fait UNIQUEMENT
     // dans le prompt — jamais par une coupure de tokens.
-    generationConfig: { temperature: 0.9 }
+    generationConfig: { temperature: 0.9, maxOutputTokens: 2048 }
   })
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`

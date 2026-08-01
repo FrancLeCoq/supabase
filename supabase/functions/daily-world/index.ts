@@ -131,7 +131,7 @@ async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
       const res = await tfetch(geminiUrl(model), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
       }, 25000)
       if (res.status === 429) { console.warn('formatCall 429 ' + model); continue }
       if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
@@ -271,6 +271,17 @@ async function generateWorldNight(): Promise<{ ok: boolean; frText: string; reas
     return { ok: true, frText: NIGHT_HOOK_FR + NL + NL + out, reason: '' }
   }
   return { ok: false, frText: '', reason: 'format inattendu' }
+}
+
+// Vrai si `out` est une traduction plausible de `src` : ni vide, ni tronquée
+// (< 40% de la source), ni un simple écho (même début → langue non changée).
+function translationLooksValid(src: string, out: string): boolean {
+  if (!out) return false
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-zà-ÿ]/gi, '')
+  const ns = norm(src), no = norm(out)
+  if (no.length < ns.length * 0.4) return false
+  if (ns.length >= 20 && no.slice(0, 30) === ns.slice(0, 30)) return false
+  return true
 }
 
 // -- Traduction EN (le francais est la source) -----------------
@@ -419,8 +430,11 @@ Deno.serve(async (req: Request) => {
       const fr = result.frText
       // Traduction EN avant de poster, pour pré-enregistrer les DEUX versions.
       const frBody = fr.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
-      const enBody = await translateToEnglish(frBody)
-      const en = enBody ? (hookEn + NL + NL + enBody) : fr   // repli EN=FR si trad vide
+      let enBody = await translateToEnglish(frBody)
+      if (!translationLooksValid(frBody, enBody)) enBody = await translateToEnglish(frBody) // 1 réessai
+      // Traduction valide → EN (en-tête EN + corps EN). Sinon repli COHÉRENT sur le
+      // FR complet (jamais d'en-tête EN collé à un corps FR).
+      const en = translationLooksValid(frBody, enBody) ? (hookEn + NL + NL + enBody) : fr
       // The Chicken Coop (World Roost), EN par défaut + bouton 🇬🇧/🇫🇷 (FR pré-enregistré).
       // Poulailler supprimé : plus d'envoi FR séparé.
       await postI18n(botToken, chatId, WORLD_THREAD_EN, imgUrl, 'en', en, fr)

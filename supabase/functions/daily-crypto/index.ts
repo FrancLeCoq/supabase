@@ -106,7 +106,7 @@ async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
       const res = await tfetch(geminiUrl(model), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
       }, 25000)
       if (res.status === 429) { console.warn('formatCall 429 ' + model); continue }
       if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
@@ -478,6 +478,16 @@ async function generateNight(): Promise<{ ok: boolean; text: string; reason: str
 }
 
 // -- Traduction FR (3.5-flash-lite, repli 3.1) -----------------
+// Vrai si `out` est une traduction plausible de `src` : ni vide, ni tronquée
+// (< 40% de la source), ni un simple écho (même début → langue non changée).
+function translationLooksValid(src: string, out: string): boolean {
+  if (!out) return false
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-zà-ÿ]/gi, '')
+  const ns = norm(src), no = norm(out)
+  if (no.length < ns.length * 0.4) return false
+  if (ns.length >= 20 && no.slice(0, 30) === ns.slice(0, 30)) return false
+  return true
+}
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram message into natural, fluent FRENCH for a French-speaking community.',
@@ -596,8 +606,11 @@ Deno.serve(async (req: Request) => {
       if (ownerOnly) { await dmOwnerCopy(botToken, result.text); console.log('daily-crypto[' + kind + '] ownerOnly envoyé'); return }
       const imgUrl = imageUrlFor(kind)
       const en = result.text
-      const fr = await translateToFrench(en)
-      const frText = fr || en
+      let fr = await translateToFrench(en)
+      if (!translationLooksValid(en, fr)) fr = await translateToFrench(en)   // 1 réessai
+      // Traduction valide → FR ; sinon repli COHÉRENT sur l'anglais (jamais un
+      // en-tête FR collé à un corps anglais).
+      const frText = translationLooksValid(en, fr) ? fr : en
       // 1) EN (défaut) -> The Chicken Coop, Crypto Coop (1490) — bouton 🇬🇧/🇫🇷 pré-enregistré
       await postI18n(botToken, chatId, CRYPTO_THREAD_EN, imgUrl, 'en', en, frText)
       // Le soir on ne journalise QUE le laius (repris par le recap Night).

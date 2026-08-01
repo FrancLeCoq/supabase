@@ -68,7 +68,7 @@ async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
     try {
       const res = await tfetch(geminiUrl(model), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
       }, 25000)
       if (res.status === 429) { console.warn('breaking formatCall 429 ' + model); continue }
       if (!res.ok) { console.error('breaking formatCall HTTP', res.status, model); continue }
@@ -256,6 +256,16 @@ function xtrendPrompt(trend: string, facts: string): string {
   ].join(NL)
 }
 
+// Vrai si `out` est une traduction plausible de `src` : ni vide, ni tronquée
+// (< 40% de la source), ni un simple écho (même début → langue non changée).
+function translationLooksValid(src: string, out: string): boolean {
+  if (!out) return false
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-zà-ÿ]/gi, '')
+  const ns = norm(src), no = norm(out)
+  if (no.length < ns.length * 0.4) return false
+  if (ns.length >= 20 && no.slice(0, 30) === ns.slice(0, 30)) return false
+  return true
+}
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
     'Translate the following Telegram breaking-news message into natural, fluent FRENCH.',
@@ -364,7 +374,9 @@ Deno.serve(async (req: Request) => {
         await tg(token, 'sendMessage', { chat_id: owner, text: '🚨 Breaking news — impossible de rédiger. Réessaie avec un sujet plus précis.' })
         return
       }
-      const fr = await translateToFrench(en) || en
+      let fr = await translateToFrench(en)
+      if (!translationLooksValid(en, fr)) fr = await translateToFrench(en)   // 1 réessai
+      if (!translationLooksValid(en, fr)) fr = en   // repli cohérent (EN) si trad ratée
 
       const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       await supabase.from('breaking_pending').upsert(

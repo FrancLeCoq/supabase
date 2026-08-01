@@ -111,7 +111,7 @@ async function generateFact(): Promise<{ ok: boolean; text: string; reason: stri
       const res = await tfetch(geminiUrl(model), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1.1 } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1.1, maxOutputTokens: 2048 } }),
       }, 30000)
       if (!res.ok) { lastReason = 'HTTP ' + res.status + ' (' + model + ')'; console.error('generateFact', lastReason); continue }
       const out = extractText(await res.json())
@@ -139,7 +139,7 @@ async function translateToFrench(text: string): Promise<string> {
       const res = await tfetch(geminiUrl(model), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 2048 } }),
       }, 25000)
       if (res.status === 429) { console.warn('translateToFrench 429 ' + model); continue }
       if (!res.ok) { console.error('translateToFrench HTTP', res.status, model); continue }
