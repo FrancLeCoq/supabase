@@ -145,7 +145,7 @@ async function francMcBlock(): Promise<string> {
 }
 
 // -- Coin gagnant + detail (CoinGecko) -------------------------
-interface Coin { id: string; name: string; symbol: string; rank: number; change: number }
+interface Coin { id: string; name: string; symbol: string; rank: number; change: number; change7d: number; change30d: number }
 // kind 'pump' -> plus gros GAGNANT 24h ; 'dump' -> plus grosse PERTE 24h.
 async function fetchTopMover(kind: 'pump' | 'dump'): Promise<{ coin: Coin | null; reason: string }> {
   const key = Deno.env.get('COINGECKO_API_KEY')
@@ -153,18 +153,20 @@ async function fetchTopMover(kind: 'pump' | 'dump'): Promise<{ coin: Coin | null
   if (key) headers['x-cg-demo-api-key'] = key
   const coins: Coin[] = []
   for (const page of [1, 2]) {
-    const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=' + page + '&price_change_percentage=24h'
+    const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=' + page + '&price_change_percentage=24h,7d,30d'
     const res = await tfetch(url, { headers })
     if (!res.ok) return { coin: null, reason: 'CoinGecko HTTP ' + res.status }
     const arr = await res.json()
     if (!Array.isArray(arr)) return { coin: null, reason: 'CoinGecko: reponse inattendue' }
     for (const c of arr) {
       const change = Number(c && (c.price_change_percentage_24h_in_currency != null ? c.price_change_percentage_24h_in_currency : c.price_change_percentage_24h))
+      const change7d = Number(c && c.price_change_percentage_7d_in_currency)
+      const change30d = Number(c && c.price_change_percentage_30d_in_currency)
       const rank = Number(c && c.market_cap_rank)
       if (!isFinite(change) || !rank || rank > 500) continue
       if (kind === 'pump' && change > 500) continue     // anomalie de pump (donnee aberrante)
       if (kind === 'dump' && change < -95) continue      // quasi-mort / delisting -> on ignore
-      coins.push({ id: String((c && c.id) || ''), name: String((c && c.name) || ''), symbol: String((c && c.symbol) || '').toUpperCase(), rank, change })
+      coins.push({ id: String((c && c.id) || ''), name: String((c && c.name) || ''), symbol: String((c && c.symbol) || '').toUpperCase(), rank, change, change7d, change30d })
     }
   }
   if (coins.length === 0) return { coin: null, reason: 'aucune donnee exploitable' }
@@ -197,15 +199,19 @@ async function groundedCatalyst(coin: Coin, kind: 'pump' | 'dump'): Promise<stri
   const suspicious = kind === 'dump'
     ? 'a sell-off, a large token unlock, an exploit/hack, bad news, delisting, or a coordinated dump'
     : 'a coordinated pump, wash trading, dump-and-pump, or an unexplained spike with no fundamental news'
+  const pct = (n: number) => isFinite(n) ? ((n >= 0 ? '+' : '') + n.toFixed(0) + '%') : 'n/a'
+  const trend = 'Price action: ' + pct(coin.change) + ' (24h), ' + pct(coin.change7d) + ' (7d), ' + pct(coin.change30d) + ' (30d).'
   const prompt = [
-    coin.name + ' ($' + coin.symbol + ') is ' + dir + ' about ' + Math.abs(coin.change).toFixed(0) + '% over the last 24h.',
-    'Use Google Search (recent news AND X / Twitter posts) to find the MOST LIKELY reason for this ' + (kind === 'dump' ? 'drop' : 'move') + '.',
-    'Write ONE single line (max ~120 characters), the reason only - NO "Catalyst:" label, no emoji, no quotes.',
-    'RULES:',
-    '- Base it on what people/outlets are actually saying right now.',
+    coin.name + ' ($' + coin.symbol + ') — ' + trend,
+    'Use Google Search (recent news AND X / Twitter posts) to find the MOST LIKELY reason for the 24h ' + (kind === 'dump' ? 'drop' : 'move') + ', ANALYSED IN CONTEXT of the 7d and 30d trend (think like a market analyst, the way CoinMarketCap AI would).',
+    'Reasoning to apply:',
+    '- If it rose strongly over 7d/30d and is now pulling back, frame it as a healthy correction / profit-taking after a rally (NOT necessarily bad news).',
+    '- If today just extends an existing down/up trend, say so.',
+    '- If there is a real specific catalyst (token unlock, hack/exploit, listing/delisting, partnership, big news), state it — that takes priority.',
     '- If the chatter/data points to artificial or suspicious activity (' + suspicious + '), say so plainly and neutrally.',
-    '- Stay factual and neutral. No hype, no price predictions, no financial advice, never say "buy/sell/moon".',
-    '- If nothing credible explains it, output EXACTLY: Broad market momentum, no single clear catalyst.',
+    'Write ONE single line (max ~130 characters): the reason IN CONTEXT only — NO "Catalyst:" label, no emoji, no quotes.',
+    'Stay factual and neutral. No hype, no price predictions, no financial advice, never say "buy/sell/moon".',
+    'If nothing credible explains it, output EXACTLY: Broad market momentum, no single clear catalyst.',
     'Output ONLY that one line.',
   ].join(NL)
   let out = await groundedSearch(prompt)
