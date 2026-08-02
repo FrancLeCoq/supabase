@@ -125,7 +125,7 @@ async function tonMarketCap(): Promise<number | null> {
     return price * supply
   } catch { return null }
 }
-async function francMcBlock(): Promise<string> {
+async function francMc(): Promise<{ ton: number; sol: number }> {
   const url = Deno.env.get('SUPABASE_URL')
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const rows: Record<string, { mc: number; auto: boolean }> = {}
@@ -141,7 +141,7 @@ async function francMcBlock(): Promise<string> {
     return (live && live > 0) ? live : ((row && row.mc) || 1300)
   }
   const [ton, sol] = await Promise.all([mcFor('ton'), mcFor('sol')])
-  return '$FRANC on TON: ' + fmtUsd(ton) + NL + '$FRANC on SOL: ' + fmtUsd(sol) + NL + NL + 'Big potential, just the beginning of the story 🚀'
+  return { ton, sol }
 }
 
 // -- Coin gagnant + detail (CoinGecko) -------------------------
@@ -217,50 +217,94 @@ async function groundedCatalyst(coin: Coin, kind: 'pump' | 'dump'): Promise<stri
   let out = await groundedSearch(prompt)
   out = (out || '').split(NL)[0].trim()
   if (!out) return 'Broad market momentum, no single clear catalyst.'
-  if (out.length > 160) out = out.slice(0, 157).trim() + '...'
+  // Phrase COMPLÈTE : si trop long, on coupe à la dernière phrase terminée
+  // (jamais au milieu d'un mot / d'une phrase).
+  if (out.length > 220) {
+    const cut = out.slice(0, 220)
+    const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '))
+    out = (end > 60 ? cut.slice(0, end + 1) : cut).trim()
+  }
   return out
 }
-async function chainProject(coin: Coin, detail: CoinDetail): Promise<string> {
+// Description COURTE du projet (une clause, sans label ni emoji).
+async function projectClause(coin: Coin, detail: CoinDetail): Promise<string> {
   const facts = [
     'Coin: ' + coin.name + ' (' + coin.symbol + ')',
-    'Issuing blockchain / platform: ' + (detail.chain || 'not listed (likely runs on its OWN native blockchain)'),
     'Categories: ' + (detail.categories || 'n/a'),
     'Official description: ' + (detail.description || 'n/a'),
   ].join(NL)
   const prompt = [
-    'From the VERIFIED FACTS below (from CoinGecko), write EXACTLY these 2 lines, each max ~100 characters, nothing else:',
-    '⛓️ Chain: <the blockchain this coin runs on; if platform is "not listed", say it runs on its own native blockchain>',
-    '🧩 Project: <one CONCRETE short clause on what the project does - real sector/use-case, be specific, not vague>',
-    '',
-    'RULES: base it ONLY on the facts. NEVER invent. If description is n/a, keep Project short and general. Output ONLY the 2 lines.',
+    'From the VERIFIED FACTS below (from CoinGecko), write ONE single CONCRETE short clause (max ~120 characters) describing what the project does — real sector / use-case, be specific, not vague. NO label, no emoji, no quotes.',
+    'RULES: base it ONLY on the facts. NEVER invent. If description is n/a, keep it short and general. Output ONLY that one clause.',
     '',
     'VERIFIED FACTS:',
     facts,
   ].join(NL)
-  const out = await formatCall(prompt)
-  if (out && out.indexOf('Chain') >= 0) return out.trim()
-  return '⛓️ Chain: Established crypto asset' + NL + '🧩 Project: A top-500 crypto project'
+  const out = (await formatCall(prompt) || '').split(NL)[0].trim()
+  return out || 'A top-500 crypto project.'
 }
 
-async function generateMove(kind: 'pump' | 'dump'): Promise<{ ok: boolean; text: string; reason: string }> {
-  const { coin, reason } = await fetchTopMover(kind)
-  if (!coin) return { ok: false, text: '', reason: '[Cocorico ' + (kind === 'dump' ? 'Dump' : 'Pump') + '] ' + reason }
-  const detail = await fetchCoinDetail(coin.id)
-  const [cp, catalyst, franc] = await Promise.all([chainProject(coin, detail), groundedCatalyst(coin, kind), francMcBlock()])
-  // Fusée pour le pump (hausse), éclair pour le dump (chute soudaine).
-  const catalystIcon = kind === 'dump' ? '⚡' : '🚀'
-  const descriptif = cp + NL + catalystIcon + ' Catalyst: ' + catalyst
+// -- Mise en forme HTML (nouveau format Cocorico Pump/Dump) ----
+function esc(s: string): string { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function capWords(s: string): string { return (s || '').split(' ').map((w) => w ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(' ') }
+function buildPump(lang: 'en' | 'fr', kind: 'pump' | 'dump', coin: Coin, chainName: string, project: string, catalyst: string, franc: { ton: number; sol: number }): string {
+  const fr = lang === 'fr'
+  const L = fr ? {
+    gainer: kind === 'dump' ? 'Plus forte baisse du Top 500 — 24h' : 'Plus forte hausse du Top 500 — 24h',
+    token: 'Token', symbol: 'Symbole', chain: 'Chaîne', project: 'Projet', catalyst: 'Catalyseur',
+    about: 'Et $FRANC dans tout ça ?', waking: 'Le coq se réveille… 👀🔥', eco: 'Écosystème $FRANC',
+    story: "L'histoire ne fait que commencer.", coming: 'Cocorico arrive.',
+  } : {
+    gainer: kind === 'dump' ? 'Top 500 Biggest Loser — Last 24h' : 'Top 500 Biggest Gainer — Last 24h',
+    token: 'Token', symbol: 'Symbol', chain: 'Chain', project: 'Project', catalyst: 'Catalyst',
+    about: 'And what about $FRANC?', waking: 'The rooster is waking up… 👀🔥', eco: '$FRANC Ecosystem',
+    story: 'The story is only beginning.', coming: 'Cocorico is coming.',
+  }
+  const headTitle = kind === 'dump' ? 'COCORICO DUMP 📉' : 'COCORICO PUMP 🚀'
   const pct = (coin.change >= 0 ? '+' : '') + coin.change.toFixed(1) + '%'
-  const header = kind === 'dump' ? '🐓 Cocorico Dump 📉' : '🐓 Cocorico Pump 🚀'
-  const line = kind === 'dump' ? 'Biggest loser in the Top 500 on the last 24h:' : 'Biggest gainer in the Top 500 on the last 24h:'
-  const arrow = kind === 'dump' ? '🔻' : '📈'
-  const text = header + NL + NL +
-    line + NL +
-    coin.name + ' ($' + coin.symbol + ') ' + pct + ' ' + arrow + NL + NL +
-    descriptif + NL + NL +
-    'And $FRANC?' + NL + 'Its cocorico is coming. 🐓🚀' + NL + NL +
-    franc
-  return { ok: true, text, reason: '' }
+  const moveEmoji = kind === 'dump' ? '🔻' : '📈'
+  return [
+    '🐓 <b>' + headTitle + '</b>',
+    '📊 <b>' + L.gainer + '</b>',
+    '',
+    '🔥 <b>$' + esc(coin.symbol) + ' ' + pct + ' ' + moveEmoji + '</b>',
+    '',
+    '🪙 <b>' + L.token + ':</b> ' + esc(coin.name),
+    '🔷 <b>' + L.symbol + ':</b> $' + esc(coin.symbol),
+    '⛓️ <b>' + L.chain + ':</b> ' + esc(chainName),
+    '',
+    '🧩 <b>' + L.project + ':</b>',
+    esc(project),
+    '',
+    '🚀 <b>' + L.catalyst + ':</b>',
+    esc(catalyst),
+    '',
+    '🐓 <b>' + L.about + '</b>',
+    '',
+    L.waking,
+    '',
+    '🚀 <b>' + L.eco + ':</b>',
+    '🟦 TON: ' + fmtUsd(franc.ton) + ' MC',
+    '🟩 SOL: ' + fmtUsd(franc.sol) + ' MC',
+    '',
+    L.story,
+    '🐓 <b>' + L.coming + '</b>',
+  ].join(NL)
+}
+
+async function generateMove(kind: 'pump' | 'dump'): Promise<{ ok: boolean; en: string; fr: string; logText: string; reason: string }> {
+  const { coin, reason } = await fetchTopMover(kind)
+  if (!coin) return { ok: false, en: '', fr: '', logText: '', reason: '[Cocorico ' + (kind === 'dump' ? 'Dump' : 'Pump') + '] ' + reason }
+  const detail = await fetchCoinDetail(coin.id)
+  const [projectEn, catalystEn, franc] = await Promise.all([projectClause(coin, detail), groundedCatalyst(coin, kind), francMc()])
+  // On ne traduit QUE les deux textes dynamiques (projet + catalyseur) ; les
+  // libellés sont des gabarits bilingues fixes → jamais de mélange EN/FR.
+  const [projectFr, catalystFr] = await Promise.all([translatePiece(projectEn), translatePiece(catalystEn)])
+  const chainEn = detail.chain ? capWords(detail.chain) : 'its own native blockchain'
+  const chainFr = detail.chain ? capWords(detail.chain) : 'blockchain native'
+  const en = buildPump('en', kind, coin, chainEn, projectEn, catalystEn, franc)
+  const fr = buildPump('fr', kind, coin, chainFr, projectFr, catalystFr, franc)
+  return { ok: true, en, fr, logText: coin.name + ' — ' + catalystEn, reason: '' }
 }
 
 // Vrai si `out` est une traduction PLAUSIBLE de `src` : ni vide, ni tronquée
@@ -296,20 +340,16 @@ async function translateReliable(prompt: string, src: string, temperature = 0.3)
   }
   return best
 }
-async function translateToFrench(text: string): Promise<string> {
-  const prompt = [
-    'Translate the following Telegram message into natural, fluent FRENCH for a French-speaking community.',
-    'RULES:',
-    '- Keep ALL emojis exactly where they are, and keep the same line breaks / layout.',
-    '- Do NOT translate or alter: "$FRANC", ticker symbols, numbers, %, prices, URLs, coin/person/product names.',
-    '- Keep "Cocorico Pump" and "Cocorico Dump" as is. Translate the labels "Chain/Project/Catalyst" to "Chaine/Projet/Catalyseur".',
-    '- Translate EVERYTHING else into French: the loser/gainer line, and the WHOLE Chain/Project/Catalyst descriptions (not just the labels). Nothing meaningful should stay in English.',
-    '- Natural French. Output ONLY the translated message, nothing else.',
-    '',
-    'MESSAGE:',
-    text,
-  ].join(NL)
-  return await translateReliable(prompt, text, 0.3)
+// Traduit un COURT texte (clause projet / catalyseur) en français fiable.
+async function translatePiece(text: string): Promise<string> {
+  if (!text) return ''
+  const prompt = 'Translate this short crypto text into natural, fluent French. Keep tickers ($X), numbers, %, and proper names unchanged. Translate EVERYTHING else. Output ONLY the French translation, nothing else.' + NL + NL + text
+  const out = await translateReliable(prompt, text, 0.3)
+  return translationLooksValid(text, out) ? out : text
+}
+// Retire d'éventuelles balises HTML (copie owner en texte brut).
+function stripTags(s: string): string {
+  return (s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
 }
 
 // -- Telegram + bandeau ----------------------------------------
@@ -346,20 +386,21 @@ async function sendWithBanner(token: string, chatId: number, text: string, threa
 
 // ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
 const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
-async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string, html = false): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key || !messageId) return
   try {
     await tfetch(url + '/rest/v1/news_i18n', {
       method: 'POST',
       headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr, html }),
     })
   } catch (e) { console.error('storeI18n', String(e)) }
 }
-async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string, html = false): Promise<void> {
   const text = (defaultLang === 'fr') ? fr : en
   const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  if (html) base.parse_mode = 'HTML'
   if (threadId) base.message_thread_id = threadId
   let messageId = 0
   if (imgUrl) {
@@ -368,7 +409,7 @@ async function postI18n(token: string, chatId: number, threadId: number, imgUrl:
   if (!messageId) {
     try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
   }
-  await storeI18n(chatId, messageId, en, fr)
+  await storeI18n(chatId, messageId, en, fr, html)
 }
 
 // Marque l'ENVOI REEL (apres publication Telegram OK) pour le rapport 22h20.
@@ -430,7 +471,7 @@ Deno.serve(async (req: Request) => {
 
   if (dryRun) {
     const r = await generateMove(kind)
-    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: r.text.length, text: r.text }, null, 2),
+    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: r.en.length, en: r.en, fr: r.fr }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
@@ -438,15 +479,12 @@ Deno.serve(async (req: Request) => {
     try {
       const result = await generateMove(kind)
       if (!result.ok) { console.error('daily-pump echec:', result.reason); return }
-      const en = result.text
       const img = imageUrl(kind)
-      const fr = await translateToFrench(en)
-      const frText = translationLooksValid(en, fr) ? fr : en   // repli cohérent (EN) si trad ratée
-      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, img, 'en', en, frText)     // EN (défaut) -> Crypto Coop (bouton 🇬🇧/🇫🇷)
-      // Poulailler supprimé : plus d'envoi FR séparé (FR via le bouton du Coop).
-      await dmOwnerCopy(botToken, en)   // copie EN -> owner (pour X, sans lien)
+      // EN (défaut) -> Crypto Coop, en HTML (gras). FR pré-enregistré (bouton 🇬🇧/🇫🇷).
+      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, img, 'en', result.en, result.fr, true)
+      await dmOwnerCopy(botToken, stripTags(result.en))   // copie EN (texte brut) -> owner (pour X)
       await markSent(slot)
-      console.log('daily-pump poste:', result.text.slice(0, 80))
+      console.log('daily-pump poste:', result.logText.slice(0, 80))
     } catch (e) { console.error('daily-pump bg exception:', String(e)) }
   })()
   ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
