@@ -351,25 +351,33 @@ const CRYPTO_LIST: CoinDef[] = [
   { id: 'the-open-network', sym: 'GRAM' },
 ]
 async function fetchCryptoBlock(): Promise<string> {
-  try {
-    const ids = CRYPTO_LIST.map((c) => c.id).join(',')
-    const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=' + ids + '&price_change_percentage=24h'
-    const res = await tfetch(url, {}, 8000)
-    if (!res.ok) return ''
-    const rows = await res.json()
-    if (!Array.isArray(rows) || !rows.length) return ''
-    const pctById: Record<string, number> = {}
-    for (const r of rows) { if (r && r.id) pctById[String(r.id)] = Number(r.price_change_percentage_24h) }
-    // On garde NOTRE ordre (BTC, ETH, BNB, XRP, SOL, GRAM) et on saute
-    // proprement toute crypto dont la variation n'a pas ete recuperee.
-    const lines = CRYPTO_LIST.map((c) => {
-      const p = pctById[c.id]
-      if (!isFinite(p)) return ''
-      return '• ' + c.sym + ': ' + fmtPct(p)
-    }).filter(Boolean)
-    if (!lines.length) return ''
-    return '🪙 Top 6 crypto (24h):' + NL + lines.join(NL)
-  } catch { return '' }
+  // Clé CoinGecko + retry : sans clé le endpoint était rate-limité (429) et le
+  // Top 6 disparaissait silencieusement du Crypto Evening.
+  const key = Deno.env.get('COINGECKO_API_KEY')
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (key) headers['x-cg-demo-api-key'] = key
+  const ids = CRYPTO_LIST.map((c) => c.id).join(',')
+  const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=' + ids + '&price_change_percentage=24h'
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await tfetch(url, { headers }, 12000)
+      if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500)); continue }
+      if (!res.ok) { await new Promise((r) => setTimeout(r, 800)); continue }
+      const rows = await res.json()
+      if (!Array.isArray(rows) || !rows.length) continue
+      const pctById: Record<string, number> = {}
+      for (const r of rows) { if (r && r.id) pctById[String(r.id)] = Number(r.price_change_percentage_24h) }
+      // On garde NOTRE ordre (BTC, ETH, BNB, XRP, SOL, GRAM) et on saute
+      // proprement toute crypto dont la variation n'a pas ete recuperee.
+      const lines = CRYPTO_LIST.map((c) => {
+        const p = pctById[c.id]
+        if (!isFinite(p)) return ''
+        return '• ' + c.sym + ': ' + fmtPct(p)
+      }).filter(Boolean)
+      if (lines.length) return '🪙 Top 6 crypto (24h):' + NL + lines.join(NL)
+    } catch { await new Promise((r) => setTimeout(r, 800)) }
+  }
+  return ''
 }
 
 // -- Laius du soir : POURQUOI ca monte/baisse (grounded) --------
