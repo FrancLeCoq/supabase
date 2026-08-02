@@ -46,6 +46,11 @@ const KIND_IMAGE: Record<string, string> = {
   wr_tech: 'Cocorico Tech Info.png',
   wr_evening: 'Le Monde Ce Soir.png',
   wr_night: 'Actu du jour en bref.png',
+  // French Coop (topic 2290) — décommente quand les bannières FR sont prêtes
+  // (uploader dans le bucket public "assets") :
+  // fr_morning: 'French Coop Matin.png',
+  // fr_eu: 'French Coop Europe.png',
+  // fr_evening: 'French Coop Soir.png',
 }
 function imageUrlFor(kind: string): string {
   const f = KIND_IMAGE[kind]
@@ -71,12 +76,12 @@ const WORLD: Record<WSlot, WDef> = {
   wr_midday: {
     hookFr: '☀️ Actu Midi du Coq :',
     hookEn: '☀️ Midday Rooster News:',
-    directive: "Recherche la plus grosse actualité EUROPÉENNE ou FRANÇAISE des 24 dernières heures. Si l'actu concerne un pays en particulier, précise-le impérativement pour que ce soit clair.",
+    directive: "Recherche la plus grosse actualité INTERNATIONALE des 24 dernières heures (portée mondiale, tous continents). Si l'actu concerne un pays en particulier, précise-le impérativement pour que ce soit clair.",
   },
   wr_tech: {
     hookFr: '💡 Cocorico Tech Info :',
     hookEn: '💡 Cocorico Tech News:',
-    directive: "Recherche la principale actualité des 24 dernières heures concernant l'IA, l'ESPACE ou les NOUVELLES TECHNOLOGIES.",
+    directive: "Recherche la principale actualité TECH des 24 dernières heures. PRIORITÉ ABSOLUE à l'IA : si un nouveau MODÈLE d'IA plus puissant est sorti ou qu'un modèle a évolué (nouvelle version, capacités, benchmarks), c'est LE sujet à retenir — annonce-le clairement. Ne traite l'ESPACE ou les autres nouvelles technologies QUE s'il n'y a AUCUNE actu IA pertinente sur la période.",
   },
   wr_evening: {
     hookFr: '🌍 Le Monde ce Soir :',
@@ -87,6 +92,29 @@ const WORLD: Record<WSlot, WDef> = {
 // "L'actu du Jour en Bref" (ex-"Bilan Info du Soir") : le hook EST la 1re ligne du message.
 const NIGHT_HOOK_FR = "🌙 L'essentiel de l'actu du Jour en Bref, résumé 👇 :"
 const NIGHT_HOOK_EN = "🌙 The Day in Review — today's essentials 👇:"
+
+// ── FRENCH COOP (topic 2290) : news FR en priorité + bouton EN ──
+// 3 créneaux Paris : 11h35 actu FR · 15h15 actu UE · 19h50 actu FR.
+// Message NATIF EN FRANÇAIS (défaut), bouton « Translate in English 🇬🇧 ».
+const FRENCH_COOP_THREAD = 2290
+type FSlot = 'fr_morning' | 'fr_eu' | 'fr_evening'
+const FRCOOP: Record<FSlot, WDef> = {
+  fr_morning: {
+    hookFr: '🇫🇷 L\'actu France du matin :',
+    hookEn: '🇫🇷 France — Morning News:',
+    directive: "Recherche LA plus grosse actualité FRANÇAISE (France) des dernières 24 heures : politique, société, économie, faits marquants. Choisis l'événement au plus fort impact pour le public français.",
+  },
+  fr_eu: {
+    hookFr: '🇪🇺 L\'actu Europe :',
+    hookEn: '🇪🇺 Europe — Top Story:',
+    directive: "Recherche LA plus grosse actualité de l'UNION EUROPÉENNE des dernières 24 heures (institutions UE, décisions de Bruxelles, actualité d'un État membre à portée européenne). Choisis l'événement au plus fort impact européen.",
+  },
+  fr_evening: {
+    hookFr: '🇫🇷 L\'actu France du soir :',
+    hookEn: '🇫🇷 France — Evening News:',
+    directive: "Recherche LA plus grosse actualité FRANÇAISE (France) des dernières 24 heures qui marque cette fin de journée. Choisis l'événement au plus fort impact pour le public français.",
+  },
+}
 
 // -- Reseau ----------------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -145,7 +173,7 @@ async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
 // -- Journal anti-doublon (slots wr_*) -------------------------
 // sinceHours: fenêtre glissante (ex. 36h) pour l'anti-doublon ; sans argument,
 // on garde la JOURNÉE civile (utilisé par le bilan du soir).
-async function fetchTodayWorldTopics(sinceHours?: number): Promise<string[]> {
+async function fetchTodayWorldTopics(sinceHours?: number, slotLike = 'wr_*'): Promise<string[]> {
   const url = Deno.env.get('SUPABASE_URL')
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key) return []
@@ -154,7 +182,7 @@ async function fetchTodayWorldTopics(sinceHours?: number): Promise<string[]> {
       ? 'created_at=gte.' + encodeURIComponent(new Date(Date.now() - sinceHours * 3600 * 1000).toISOString())
       : 'day=eq.' + new Date().toISOString().slice(0, 10)
     const res = await tfetch(
-      url + '/rest/v1/daily_news_log?' + filter + '&slot=like.wr_*&select=summary&order=created_at',
+      url + '/rest/v1/daily_news_log?' + filter + '&slot=like.' + slotLike + '&select=summary&order=created_at',
       { headers: { apikey: key, Authorization: 'Bearer ' + key } },
     )
     if (!res.ok) return []
@@ -227,6 +255,17 @@ function formatPromptWorld(facts: string): string {
 async function generateWorld(slot: WSlot): Promise<{ ok: boolean; frText: string; reason: string }> {
   const def = WORLD[slot]
   const covered = await fetchTodayWorldTopics(36)   // anti-doublon sur 36h glissantes
+  const facts = await groundedSearch(searchPromptWorld(def, covered))
+  if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape A: pas d actu' }
+  const msg = await formatCall(formatPromptWorld(facts))
+  if (!msg || msg.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape B: vide/NONE' }
+  return { ok: true, frText: def.hookFr + NL + NL + splitAccroche(msg), reason: '' }
+}
+
+// == FRENCH COOP (fr_morning..fr_evening) — FR natif, anti-doublon dédié ==
+async function generateFrench(slot: FSlot): Promise<{ ok: boolean; frText: string; reason: string }> {
+  const def = FRCOOP[slot]
+  const covered = await fetchTodayWorldTopics(36, 'fr_*')   // anti-redondance entre news FR
   const facts = await groundedSearch(searchPromptWorld(def, covered))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape A: pas d actu' }
   const msg = await formatCall(formatPromptWorld(facts))
@@ -380,6 +419,8 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
 
 // ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
 const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
+// Version FR par défaut (French Coop) : bouton vers l'anglais, bascule "home=fr".
+const NLANG_FR_BTN = { inline_keyboard: [[{ text: 'Translate in English 🇬🇧', callback_data: 'nlangf:en' }]] }
 async function storeI18n(chatId: number, messageId: number, en: string, fr: string, html = false): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key || !messageId) return
@@ -391,9 +432,9 @@ async function storeI18n(chatId: number, messageId: number, en: string, fr: stri
     })
   } catch (e) { console.error('storeI18n', String(e)) }
 }
-async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string, html = false): Promise<void> {
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string, html = false, btn: any = NLANG_BTN): Promise<void> {
   const text = (defaultLang === 'fr') ? fr : en
-  const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: btn }
   if (html) base.parse_mode = 'HTML'
   if (threadId) base.message_thread_id = threadId
   let messageId = 0
@@ -442,7 +483,8 @@ async function markSent(jobKey: string): Promise<void> {
     })
   } catch { /* best-effort */ }
 }
-const KIND_JOB: Record<string, string> = { wr_morning: 'world-morning', wr_eco: 'world-eco', wr_midday: 'world-midday', wr_tech: 'world-tech', wr_evening: 'world-evening', wr_night: 'world-night' }
+const KIND_JOB: Record<string, string> = { wr_morning: 'world-morning', wr_eco: 'world-eco', wr_midday: 'world-midday', wr_tech: 'world-tech', wr_evening: 'world-evening', wr_night: 'world-night', fr_morning: 'fr-morning', fr_eu: 'fr-eu', fr_evening: 'fr-evening' }
+const FR_KINDS = ['fr_morning', 'fr_eu', 'fr_evening']
 
 // -- Point d'entree --------------------------------------------
 Deno.serve(async (req: Request) => {
@@ -458,12 +500,13 @@ Deno.serve(async (req: Request) => {
   let dryRun = false
   try {
     const body = await req.json()
-    const valid = ['wr_morning', 'wr_eco', 'wr_midday', 'wr_tech', 'wr_evening', 'wr_night']
+    const valid = ['wr_morning', 'wr_eco', 'wr_midday', 'wr_tech', 'wr_evening', 'wr_night', ...FR_KINDS]
     if (body && valid.indexOf(body.kind) >= 0) kind = body.kind
     if (body && body.dryRun === true) dryRun = true
   } catch { /* corps vide -> wr_morning */ }
 
-  const gen = () => (kind === 'wr_night') ? generateWorldNight() : generateWorld(kind as WSlot)
+  const isFrCoop = FR_KINDS.indexOf(kind) >= 0
+  const gen = () => (kind === 'wr_night') ? generateWorldNight() : isFrCoop ? generateFrench(kind as FSlot) : generateWorld(kind as WSlot)
 
   if (dryRun) {
     const r: any = await gen()
@@ -483,6 +526,19 @@ Deno.serve(async (req: Request) => {
         await dmOwnerCopy(botToken, stripTags(result.en))   // recap 21h40 -> owner (pour X)
         await markSent(KIND_JOB[kind] || ('world-' + kind))
         console.log('daily-world[wr_night] poste')
+        return
+      }
+      // French Coop (fr_*) : FR par DÉFAUT (public FR), bouton « Translate in English 🇬🇧 ».
+      if (isFrCoop) {
+        const def = FRCOOP[kind as FSlot]
+        const fr = result.frText
+        const frBody = fr.split(NL + NL).slice(1).join(NL + NL)
+        const enBody = await translateToEnglish(frBody)
+        const en = translationLooksValid(frBody, enBody) ? (def.hookEn + NL + NL + enBody) : fr
+        await postI18n(botToken, chatId, FRENCH_COOP_THREAD, imgUrl, 'fr', en, fr, false, NLANG_FR_BTN)
+        await logDailyTopic(kind, fr)
+        await markSent(KIND_JOB[kind] || ('world-' + kind))
+        console.log('daily-world[' + kind + '] French Coop poste:', fr.slice(0, 80))
         return
       }
       // Autres rubriques : FR natif -> traduction EN, puis pré-enregistrement.

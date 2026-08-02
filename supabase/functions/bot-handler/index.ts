@@ -130,6 +130,11 @@ function coopWelcome(m: string) {
 const SLANG_ROW = [
   { text: 'Translate in French 🇫🇷', callback_data: 'slang:fr' },
 ]
+// French Coop (topic 2290) : présentation FR par défaut → bouton vers l'anglais.
+const SLANG_FR_ROW = [
+  { text: 'Translate in English 🇬🇧', callback_data: 'slangf:en' },
+]
+const FRENCH_COOP_THREAD = 2290
 async function postSetupBilingual(
   token: string, supabase: any,
   enThread: number, frThread: number,
@@ -147,6 +152,21 @@ async function postSetupBilingual(
   // Poulailler supprimé : plus d'envoi FR séparé (la version FR reste dans le
   // Chicken Coop via le bouton 🇬🇧/🇫🇷). frThread conservé pour compat de signature.
   void frThread
+}
+
+// French Coop : présentation FR par DÉFAUT (public francophone) + bouton
+// « Translate in English 🇬🇧 » (bascule instantanée, aperçu EN puis retour FR).
+async function postSetupFrench(
+  token: string, supabase: any, thread: number,
+  frText: string, frKb: any[], enText: string, enKb: any[],
+): Promise<void> {
+  const extra: Record<string, any> = { reply_markup: { inline_keyboard: [...frKb, SLANG_FR_ROW] } }
+  if (thread && thread > 1) extra.message_thread_id = thread
+  const sent = await sendMessage(token, CHICKEN_COOP, frText, extra)
+  if (sent?.message_id) {
+    await pinMessage(token, CHICKEN_COOP, sent.message_id)
+    try { await supabase.from('setup_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sent.message_id, en_text: enText, fr_text: frText, en_kb: enKb, fr_kb: frKb, updated_at: new Date().toISOString() }) } catch (e) { console.error('setup_i18n(fr)', String(e)) }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -180,8 +200,21 @@ const peekSleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 async function handleFrToggle(o: {
   token: string; chatId: number; messageId: number; isCaption: boolean; html: boolean;
   lang: string; enText: string; frText: string; enRows: any[]; frRows: any[]; frCb: string; enCb: string;
+  homeLang?: 'en' | 'fr';
 }) {
-  // editBody renvoie true si Telegram accepte l'édition (pour fiabiliser le retour EN).
+  // Langue PERSISTANTE (home) et langue d'APERÇU (peek, 20 s puis retour auto).
+  // Par défaut home=en (news EN partagée par tout le groupe). French Coop : home=fr.
+  const home = o.homeLang || 'en'
+  const peek = home === 'en' ? 'fr' : 'en'
+  const homeText = home === 'en' ? o.enText : o.frText
+  const peekText = peek === 'en' ? o.enText : o.frText
+  const homeRows = home === 'en' ? o.enRows : o.frRows
+  const peekRows = peek === 'en' ? o.enRows : o.frRows
+  const homeCb = home === 'en' ? o.enCb : o.frCb
+  const peekCb = peek === 'en' ? o.enCb : o.frCb
+  const persistRow = () => [{ text: peek === 'fr' ? 'Translate in French 🇫🇷' : 'Translate in English 🇬🇧', callback_data: peekCb }]
+  const backRowX = (s: number) => [{ text: home === 'en' ? `⏳ Back in English in ${s}s` : `⏳ Retour au français dans ${s}s`, callback_data: homeCb }]
+  // editBody renvoie true si Telegram accepte l'édition (pour fiabiliser le retour home).
   const editBody = async (txt: string, kb: any[]): Promise<boolean> => {
     const method = o.isCaption ? 'editMessageCaption' : 'editMessageText'
     const p: any = { chat_id: o.chatId, message_id: o.messageId, reply_markup: { inline_keyboard: kb } }
@@ -193,9 +226,9 @@ async function handleFrToggle(o: {
       return !!(j && j.ok)
     } catch (_) { return false }
   }
-  if (o.lang === 'en') { await editBody(o.enText, [...o.enRows, translateRow(o.frCb)]); return }
-  // FR : on montre le français + décompte, puis retour AUTO à l'anglais.
-  await editBody(o.frText, [...o.frRows, backRow(o.enCb, FR_PEEK_SECONDS)])
+  if (o.lang === home) { await editBody(homeText, [...homeRows, persistRow()]); return }
+  // Aperçu de l'autre langue + décompte, puis retour AUTO à la langue home.
+  await editBody(peekText, [...peekRows, backRowX(FR_PEEK_SECONDS)])
   const setBtn = async (kb: any[]) => {
     try {
       await fetch(`https://api.telegram.org/bot${o.token}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: o.chatId, message_id: o.messageId, reply_markup: { inline_keyboard: kb } }) })
@@ -208,11 +241,11 @@ async function handleFrToggle(o: {
       const step = s >= 5 ? 5 : s
       await peekSleep(step * 1000)
       s -= step
-      if (s > 0) await setBtn([...o.frRows, backRow(o.enCb, s)])
+      if (s > 0) await setBtn([...peekRows, backRowX(s)])
     }
-    // Retour à l'anglais GARANTI : plusieurs tentatives si Telegram limite (429).
+    // Retour à la langue home GARANTI : plusieurs tentatives si Telegram limite (429).
     for (let a = 0; a < 5; a++) {
-      if (await editBody(o.enText, [...o.enRows, translateRow(o.frCb)])) break
+      if (await editBody(homeText, [...homeRows, persistRow()])) break
       await peekSleep(1500)
     }
   })()
@@ -567,6 +600,25 @@ Deno.serve(async (req) => {
         return new Response('ok')
       }
 
+      // ── French Coop : news FR par DÉFAUT + aperçu EN (home=fr, miroir de nlang) ──
+      if (cb.data === 'nlangf:en' || cb.data === 'nlangf:fr') {
+        const lang = cb.data.split(':')[1]
+        const m: any = cb.message
+        if (m) {
+          try {
+            const { data: snap } = await cbSupa.from('news_i18n').select('en, fr, html').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
+            if (snap) {
+              await handleFrToggle({
+                token: cbToken, chatId: m.chat.id, messageId: m.message_id,
+                isCaption: m.caption !== undefined && m.caption !== null, html: !!snap.html,
+                lang, enText: snap.en, frText: snap.fr, enRows: [], frRows: [], frCb: 'nlangf:fr', enCb: 'nlangf:en', homeLang: 'fr',
+              })
+            }
+          } catch (e) { console.error('nlangf:', String(e)) }
+        }
+        return new Response('ok')
+      }
+
       // ── Setup : bouton 🇬🇧/🇫🇷 (bascule texte + clavier, pré-enregistrée) ──
       if (cb.data === 'slang:en' || cb.data === 'slang:fr') {
         const lang = cb.data.split(':')[1]
@@ -582,6 +634,25 @@ Deno.serve(async (req) => {
               })
             }
           } catch (e) { console.error('slang:', String(e)) }
+        }
+        return new Response('ok')
+      }
+
+      // ── Setup French Coop : FR par défaut + aperçu EN (home=fr, miroir de slang) ──
+      if (cb.data === 'slangf:en' || cb.data === 'slangf:fr') {
+        const lang = cb.data.split(':')[1]
+        const m: any = cb.message
+        if (m) {
+          try {
+            const { data: snap } = await cbSupa.from('setup_i18n').select('en_text, fr_text, en_kb, fr_kb').eq('chat_id', m.chat.id).eq('message_id', m.message_id).maybeSingle()
+            if (snap) {
+              await handleFrToggle({
+                token: cbToken, chatId: m.chat.id, messageId: m.message_id, isCaption: false, html: true,
+                lang, enText: snap.en_text, frText: snap.fr_text,
+                enRows: snap.en_kb || [], frRows: snap.fr_kb || [], frCb: 'slangf:fr', enCb: 'slangf:en', homeLang: 'fr',
+              })
+            }
+          } catch (e) { console.error('slangf:', String(e)) }
         }
         return new Response('ok')
       }
@@ -1032,7 +1103,7 @@ Deno.serve(async (req) => {
         `<b>1️⃣ Setup (messages épinglés)</b>\n` +
         `/setupwallet — Topic Wallet\n/setupgames — Topic Games\n` +
         `/setupchickencoop — The Chicken Coop (General)\n/setuphotwings — Topic Hot Wings\n` +
-        `/setupcryptocoop — Topic Crypto Coop\n/setupworldroost — Topic World Roost\n/setuptrump — Topic Trump News\n\n` +
+        `/setupcryptocoop — Topic Crypto Coop\n/setupworldroost — Topic World Roost\n/setupfr — Topic French Coop\n/setuptrump — Topic Trump News\n\n` +
         `<b>2️⃣ Racing</b> (The Chicken Coop, EN + bouton 🇫🇷)\n` +
         `/F1essais · /GPessais — Essais libres\n/F1qualifs · /GPqualifs — Qualifications\n` +
         `/F1qualifssprint · /GPqualifssprint — Qualifs sprint\n/F1sprint · /GPsprint — Course sprint\n` +
@@ -1752,6 +1823,40 @@ Deno.serve(async (req) => {
         ]
       )
       await sendMessage(token, chatId, tr('✅ World Roost publié et épinglé dans les deux groupes.', '✅ World Roost posted and pinned in both groups.'))
+      return new Response('ok')
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  /setupfr — présentation du topic French Coop (🇫🇷, FR par défaut)
+    // ══════════════════════════════════════════════════════════
+    if (text === '/setupfr' || text === '/setupfrenchcoop') {
+      if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
+      await deleteMessage(token, chatId, messageId)
+      await postSetupFrench(token, supabase, FRENCH_COOP_THREAD,
+        // FR (défaut)
+        `🇫🇷 <b>French Coop</b>\n\n` +
+        `L'actualité française et européenne, chaque jour, claire et à l'essentiel — l'info qui compte pour la communauté francophone. 🐓\n\n` +
+        `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
+        `👉 11:35 — 🇫🇷 Meilleure actu France\n` +
+        `👉 15:15 — 🇪🇺 Meilleure actu Union Européenne\n` +
+        `👉 19:50 — 🇫🇷 Meilleure actu France`,
+        [
+          [{ text: '🐓 All games & Rooster universe', url: MENU_DEEPLINK }],
+          [{ text: '💎 $Franc on TON', url: BUY_FRANC_TON_URL }, { text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }],
+        ],
+        // EN (aperçu)
+        `🇫🇷 <b>French Coop</b>\n\n` +
+        `French and European news, every day, clear and to the point — the stories that matter to the French-speaking community. 🐓\n\n` +
+        `🕒 <b>Posted every day (Paris time):</b>\n` +
+        `👉 11:35 — 🇫🇷 Top French story\n` +
+        `👉 15:15 — 🇪🇺 Top EU story\n` +
+        `👉 19:50 — 🇫🇷 Top French story`,
+        [
+          [{ text: '🐓 All games & Rooster universe', url: MENU_DEEPLINK }],
+          [{ text: '💎 $Franc on TON', url: BUY_FRANC_TON_URL }, { text: '💰 $Franc on SOL', url: BUY_FRANC_SOL_URL }],
+        ],
+      )
+      await sendMessage(token, chatId, tr('✅ French Coop publié et épinglé.', '✅ French Coop posted and pinned.'))
       return new Response('ok')
     }
 
