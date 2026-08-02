@@ -31,7 +31,10 @@ const AI_TIMEOUT_MS = 40000
 
 // Telegram
 const COOP_CHAT_ID = Number(Deno.env.get('FACT_CHAT_ID') ?? '-1003842240104') // The Chicken Coop (EN)
-const RACING_THREAD_EN = 1631
+// F1 et MotoGP ont désormais leur propre topic dans The Chicken Coop.
+const F1_THREAD = 1631        // t.me/LeCoqFrancis/1631
+const MOTOGP_THREAD = 2259    // t.me/LeCoqFrancis/2259
+const racingThread = (isF1: boolean) => (isF1 ? F1_THREAD : MOTOGP_THREAD)
 const OWNER_ID = 6593812300         // DM du owner en cas d'echec
 // Le lien "rejoins le poulailler" n'est PLUS collé dans la copie owner (le lien
 // t.me dans un post X provoque un shadowban) : il se met en commentaire du post
@@ -44,16 +47,40 @@ async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promis
 
 // Bouton 🇬🇧/🇫🇷 pré-enregistré (bascule instantanée via news_i18n, sans IA).
 const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
-async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string, html = false): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key || !messageId) return
   try {
     await tfetch(url + '/rest/v1/news_i18n', {
       method: 'POST',
       headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr, html }),
     })
   } catch (e) { console.error('storeI18n', String(e)) }
+}
+// Échappe le texte IA puis convertit les **titres** en gras HTML (sûr : on
+// échappe d'abord & < >, puis on injecte les balises depuis les marqueurs).
+function toHtmlBold(s: string): string {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+}
+// Retire d'éventuelles balises HTML (copie owner en texte brut).
+function stripTags(s: string): string {
+  return (s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+}
+// Titres des news (**...**) pour l'anti-redondance.
+function extractNewsTitles(s: string): string[] {
+  const out: string[] = []; const re = /\*\*(.+?)\*\*/g; let m: RegExpExecArray | null
+  while ((m = re.exec(s || '')) && out.length < 2) out.push(m[1].trim())
+  return out
+}
+// En-tête par rubrique. /we et /news ont un en-tête dédié ; le reste garde
+// « <emoji> <Sport> — <hook> ». (news = HTML, gras/italique dans l'en-tête.)
+function raceHeader(type: RType, lang: 'en' | 'fr', sportShort: string, sportEmoji: string): string {
+  if (type === 'we') return sportEmoji + ' ' + sportShort + ' | ' + (lang === 'en' ? 'Next Race' : 'Prochaine course') + ' 🏁'
+  if (type === 'news') return sportEmoji + ' <b>' + sportShort.toUpperCase() + ' PADDOCK BUZZ</b> 🏁' + NL
+    + '🎙️ <i>' + (lang === 'en' ? 'Latest news &amp; rumors from the paddock' : 'Dernières infos &amp; rumeurs du paddock') + '</i>'
+  return sportEmoji + ' ' + sportShort + ' — ' + (lang === 'en' ? HOOK_EN[type] : HOOK_FR[type])
 }
 function geminiUrl(model: string): string {
   const key = Deno.env.get('GEMINI_API_KEY') || ''
@@ -106,7 +133,7 @@ async function formatCall(prompt: string): Promise<string> {
 // forme + hooks EN/FR. {S} = 'F1' ou 'MotoGP', {SPORT} = nom long.
 type RType = 'essais' | 'qualifs' | 'qualifssprint' | 'sprint' | 'course' | 'we' | 'news' | 'constructeurs'
 
-function searchPrompt(sportLong: string, type: RType): string {
+function searchPrompt(sportLong: string, type: RType, covered: string[] = []): string {
   const base = 'Use Google Search to find accurate, up-to-date facts. Report ONLY verified facts, in English, as raw notes (no styling). If you genuinely cannot find the information, reply with exactly: NONE.' + NL + NL
   const q: Record<RType, string> = {
     essais: 'Find the results and highlights of the most recent ' + sportLong + ' FREE PRACTICE sessions of the current or upcoming race weekend (usually held on Friday). Who was fastest, notable lap times, incidents, surprises, weather.',
@@ -118,7 +145,35 @@ function searchPrompt(sportLong: string, type: RType): string {
     news: 'Find the freshest ' + sportLong + ' paddock news, rumours and gossip from the LAST 48 HOURS (driver/rider moves, contracts, team news, controversies, injuries). Juicy but factual.',
     constructeurs: 'Find the CURRENT ' + sportLong + " Constructors'/Manufacturers' Championship standings AS OF TODAY: the FULL classification IN ORDER with, for EACH constructor/team, the position, the constructor/team NAME, their points total, AND the names of that team's TWO regular race drivers/riders (for a manufacturer, its two leading works riders). Give each driver/rider as first-name INITIAL + last name. Label this STANDINGS and keep every position.",
   }
-  return base + q[type]
+  let extra = ''
+  if (type === 'news' && covered.length) {
+    extra = NL + NL + 'ALREADY POSTED in the last few days — do NOT repeat these, find DIFFERENT and NEWER items:' + NL + covered.map((c) => '- ' + c).join(NL)
+  }
+  return base + q[type] + extra
+}
+// Anti-redondance /news : on garde les 4 derniers titres/sujets par sport.
+function racingNewsSlot(isF1: boolean): string { return isF1 ? 'racing_f1_news' : 'racing_gp_news' }
+async function fetchRecentRacingNews(isF1: boolean): Promise<string[]> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return []
+  try {
+    const res = await tfetch(url + '/rest/v1/daily_news_log?slot=eq.' + racingNewsSlot(isF1) + '&select=summary&order=created_at.desc&limit=4',
+      { headers: { apikey: key, Authorization: 'Bearer ' + key } })
+    if (!res.ok) return []
+    const rows = await res.json()
+    return (Array.isArray(rows) ? rows : []).map((r: any) => String((r && r.summary) || '')).filter(Boolean)
+  } catch { return [] }
+}
+async function logRacingNews(isF1: boolean, summary: string): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key || !summary) return
+  try {
+    await tfetch(url + '/rest/v1/daily_news_log', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ day: new Date().toISOString().slice(0, 10), slot: racingNewsSlot(isF1), summary: summary.slice(0, 300) }),
+    })
+  } catch { /* best-effort */ }
 }
 
 function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RType, facts: string): string {
@@ -133,14 +188,14 @@ function formatPrompt(lang: 'English' | 'French', sportShort: string, type: RTyp
     sprint: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team)", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
     course: 'Write TWO blocks: (1) a short preamble, MAX 280 CHARACTERS, with the race highlights and the winner; then a blank line; then (2) the finishing order, ONE line per position, each line STARTING with the position as keycap number emojis, like "1️⃣ Name (Team)", then "2️⃣ ...". Use 🔟 for tenth; above ten combine digit emojis (e.g. 1️⃣1️⃣). Never write "P1"/"P2".',
     we: 'Write the upcoming ' + sportShort + ' race weekend, THEN the current world standings. Plain text, follow this STRUCTURE EXACTLY: '
-      + '(1) A line starting with "📍" IMMEDIATELY followed by the circuit name, no space after the pin (e.g. "📍Circuit de Zandvoort"). '
-      + '(2) The next line: the country FLAG emoji + a space + the country name (e.g. "🇳🇱 Netherlands" / "🇳🇱 Pays-Bas"). '
+      + '(1) A line "📍 <circuit name> <country FLAG emoji>" (one space after the pin, e.g. "📍 Silverstone Circuit 🇬🇧"). '
+      + '(2) The next line "🏆 <Grand Prix name>" (e.g. "🏆 Great Britain GP" / "🏆 GP de Grande-Bretagne"). '
       + '(3) A blank line. '
-      + '(4) The schedule GROUPED BY DAY, in chronological order, as ONE SINGLE CONTIGUOUS BLOCK with NO blank line between days. For EACH day that has sessions: first a line "👉 <Day> :" (e.g. "👉 Friday :" / "👉 Vendredi :"), then directly BELOW it ONE bullet per session formatted "• <time> UTC – <Session name>". The very next day header comes on the immediately following line (NO empty line separating one day from the next). Use the language time notation (English "14:30", French "14h30"). '
+      + '(4) The schedule GROUPED BY DAY, in chronological order. For EACH day that has sessions: first a line "📅 <Weekday> • <day number> <Month>" (e.g. "📅 Friday • 9 August" / "📅 Vendredi • 9 août"), then directly below it ONE line per session formatted "🕐 <HH:MM> UTC — <Session name>" using 24-hour UTC times (e.g. "🕐 08:45 UTC — FP1"). IMPORTANT: the MAIN RACE session line (and only it) MUST start with "🏁" instead of "🕐" (e.g. "🏁 12:00 UTC — Race"). Separate each day block from the next with ONE blank line. '
       + '(5) A blank line, then a header line exactly "🏆 World Championship". '
       + '(6) Then the FULL current standings from the facts, ONE line per driver/rider IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣, 1️⃣2️⃣), formatted EXACTLY like this: "' + standingsFmt + '". For the driver/rider name use ONLY the first-name INITIAL + "." + the FULL last name (e.g. "K. Antonelli", "L. Hamilton"). '
       + 'Keep the exact order, teams and points from the facts. Write the points as WHOLE INTEGERS with NO decimals and NO trailing ".0"/".00" (e.g. "208p", never "208.00p"; "87p", never "87.0p"). Shorten these team names: "Racing Bulls" -> "Racing B.", "Aston Martin" -> "Aston M.", "Red Bull" -> "Red B.". NO 280-character limit here.',
-    news: 'Write the freshest paddock news as 3 to 5 short punchy bullet points. Each bullet MUST start with "👉 " and be a single sentence. Separate EACH bullet with a BLANK LINE (an empty line between bullets, so they are airy and never glued together). Keep it factual. Max ~600 characters.',
+    news: 'Write EXACTLY the 2 freshest, most important paddock news items (MAXIMUM 2, never more). For EACH item write TWO lines: (line 1) ONE relevant emoji + a space + a SHORT punchy title wrapped in **double asterisks** (e.g. "🩹 **Bezzecchi back on track**"); (line 2) a 1 to 2 sentence factual paragraph. Separate the two items with ONE blank line. Do NOT use bullet points. Do NOT add any header or closing line (both are added automatically). Keep it factual. ~450 characters total.',
     constructeurs: "Write ONLY the constructors' standings, with NO preamble and NO extra text. ONE line per constructor IN ORDER, each line STARTING with the position as keycap number emojis (1️⃣ 2️⃣ 3️⃣ …, 🔟 for tenth, and combine digits above ten e.g. 1️⃣1️⃣), formatted EXACTLY like this: \"<rank emoji> <Constructor/Team> - <points>p | <Driver1> & <Driver2>\". Use the driver/rider first-name INITIAL + \".\" + full last name (e.g. \"1️⃣ McLaren - 512p | L. Norris & O. Piastri\"). Write the points as WHOLE INTEGERS with no decimals. Shorten these team names: \"Racing Bulls\" -> \"Racing B.\", \"Aston Martin\" -> \"Aston M.\", \"Red Bull\" -> \"Red B.\". Keep the exact order and points from the facts. NO 280-character limit.",
   }
   return [
@@ -175,10 +230,11 @@ const HOOK_FR: Record<RType, string> = {
 
 // -- Telegram --------------------------------------------------
 // Renvoie le message_id publie (0 si echec) pour pouvoir l'epingler.
-async function post(token: string, chatId: number, text: string, threadId: number, replyMarkup?: any): Promise<number> {
+async function post(token: string, chatId: number, text: string, threadId: number, replyMarkup?: any, html = false): Promise<number> {
   try {
     const body: any = { chat_id: chatId, text, disable_web_page_preview: true }
     if (threadId) body.message_thread_id = threadId
+    if (html) body.parse_mode = 'HTML'
     if (replyMarkup) body.reply_markup = replyMarkup
     const res = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -286,7 +342,8 @@ function stripStandings(text: string): string {
   const kept = (text || '').split(NL).filter((l) => {
     const t = l.trim()
     if (isStandingLine(l)) return false
-    if (/^🏆/.test(t) || /world championship/i.test(t) || /championnat du monde/i.test(t)) return false
+    // On retire l'en-tête du classement (mais PAS la ligne « 🏆 <Nom du GP> »).
+    if (/world championship/i.test(t) || /championnat du monde/i.test(t)) return false
     return true
   })
   return kept.join(NL).replace(/\n{3,}/g, NL + NL).trim()
@@ -312,7 +369,7 @@ async function runConstructors(token: string, isF1: boolean, sportShort: string,
   }
   const caption = sportEmoji + ' ' + sportShort + ' — Classement constructeurs 🏆'
   // 1) Cocorico Racing : le PNG (image uniquement, avec un titre en légende).
-  await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN, caption)
+  await sendPhotoBytes(token, COOP_CHAT_ID, png, racingThread(isF1), caption)
   // 2) DM owner : le même PNG + [📥 Enreg. Classement | 📤 Publier sur X].
   const tag = isF1 ? '#F1 #Formula1' : '#MotoGP'
   const xText = sportEmoji + ' ' + sportShort + " Constructors' Championship 🏁" + NL + NL + tag
@@ -337,7 +394,9 @@ async function runCommand(token: string, command: string): Promise<void> {
   // Classement constructeurs : flux dédié (PNG only + DM owner « Publier sur X »).
   if (type === 'constructeurs') { await runConstructors(token, isF1, sportShort, sportEmoji); return }
 
-  const facts = await groundedSearch(searchPrompt(sportLong, type))
+  // /news : on récupère les 4 derniers sujets déjà postés pour éviter la redite.
+  const coveredNews = type === 'news' ? await fetchRecentRacingNews(isF1) : []
+  const facts = await groundedSearch(searchPrompt(sportLong, type, coveredNews))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) {
     await dmOwner(token, '🏁 /' + command + ' : aucune info trouvee pour le moment (course pas encore courue ou pas de donnees). Reessaie plus tard.')
     return
@@ -345,11 +404,9 @@ async function runCommand(token: string, command: string): Promise<void> {
 
   // Le programme du week-end (/F1we /GPwe) est epingle dans chaque groupe.
   const doPin = type === 'we'
-  // En-tête du week-end : on ajoute la saison + drapeau à damier.
-  const weSuffix = (type === 'we') ? ' 🏁' : ''
-  // Séparateur titre→corps : pour /F1we /GPwe, on colle le circuit juste sous
-  // le titre (pas de ligne vide) ; ailleurs on garde une ligne vide aérée.
-  const headSep = (type === 'we') ? NL : NL + NL
+  // (L'en-tête /we et /news est géré par raceHeader ; plus de suffixe manuel.)
+  // Une ligne vide entre l'en-tête et le corps pour toutes les rubriques.
+  const headSep = NL + NL
 
   // The Chicken Coop (Cocorico Racing, 1631) : EN par défaut + bouton 🇬🇧/🇫🇷.
   // Poulailler supprimé : la version FR reste accessible via le bouton.
@@ -363,26 +420,34 @@ async function runCommand(token: string, command: string): Promise<void> {
   const enDisp = cfg ? stripStandings(enFull) : enFull
   const frDisp = cfg ? stripStandings(frFull) : frFull
   if (enOk) {
-    const enMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_EN[type] + weSuffix + headSep + enDisp
-    const frMsg = sportEmoji + ' ' + sportShort + ' — ' + HOOK_FR[type] + weSuffix + headSep + frDisp
+    // /news : HTML (titres en gras) + phrase de clôture ; sinon texte brut.
+    const useHtml = type === 'news'
+    const clEn = useHtml ? (NL + NL + '🏁 More paddock updates coming soon...') : ''
+    const clFr = useHtml ? (NL + NL + "🏁 D'autres infos du paddock arrivent bientôt...") : ''
+    const enBody = useHtml ? toHtmlBold(enDisp) : enDisp
+    const frBody = useHtml ? toHtmlBold(frDisp) : frDisp
+    const enMsg = raceHeader(type, 'en', sportShort, sportEmoji) + headSep + enBody + clEn
+    const frMsg = raceHeader(type, 'fr', sportShort, sportEmoji) + headSep + frBody + clFr
     // Rendu du classement en PNG (le cas échéant).
     const png = cfg ? await renderStandingsPng(enFull, cfg.kind, isF1, sportShort, cfg.subtitle) : null
     if (png && png.length > 0 && enMsg.length <= 1000) {
       // POST UNIQUE : image + préambule en légende + bouton FR ; épinglé si /we.
       // (Le classement ne vit qu'en PNG ; la légende porte le préambule + toggle.)
-      const idEn = await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN, enMsg, NLANG_BTN)
+      const idEn = await sendPhotoBytes(token, COOP_CHAT_ID, png, racingThread(isF1), enMsg, NLANG_BTN)
       if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
       if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
       // DM owner : PNG + [📥 Enreg. Classement | 📤 Publier sur X].
       await ownerClassementDM(token, png, enMsg, enMsg)
     } else {
-      // Repli : texte seul + image séparée (best-effort) + copie owner texte.
-      const idEn = await post(token, COOP_CHAT_ID, enMsg, RACING_THREAD_EN, NLANG_BTN)
+      // Repli / texte seul (dont /news). HTML pour /news, épinglé si /we.
+      const idEn = await post(token, COOP_CHAT_ID, enMsg, racingThread(isF1), NLANG_BTN, useHtml)
       if (doPin) await pinMessage(token, COOP_CHAT_ID, idEn)
-      if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg)
-      if (png && png.length > 0) { await sendPhotoBytes(token, COOP_CHAT_ID, png, RACING_THREAD_EN); await ownerClassementDM(token, png, enMsg, enMsg) }
-      else await dmOwnerCopy(token, enMsg)
+      if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frOk ? frMsg : enMsg, useHtml)
+      if (png && png.length > 0) { await sendPhotoBytes(token, COOP_CHAT_ID, png, racingThread(isF1)); await ownerClassementDM(token, png, enMsg, enMsg) }
+      else await dmOwnerCopy(token, useHtml ? stripTags(enMsg) : enMsg)
     }
+    // /news : on journalise les titres pour l'anti-redondance (4 derniers).
+    if (type === 'news') { for (const t of extractNewsTitles(enFull)) await logRacingNews(isF1, t) }
   } else { console.error('racing[' + command + '] EN vide/NONE') }
 
   if (!enOk && !frOk) {
