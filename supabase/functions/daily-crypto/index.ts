@@ -216,18 +216,17 @@ const FNG_EMOJI: Record<string, string> = {
 // Ligne prête à afficher pour le Crypto Evening : "Fear & Greed Index: 36 (Fear 😨)".
 // L'état de l'indice est mis entre parenthèses à côté du chiffre, avec sa petite
 // émoticône associée. '' si l'API est indisponible (on omet alors la ligne).
-async function fetchFearGreedLine(): Promise<string> {
+async function fetchFngPiece(): Promise<{ value: number; cls: string; emoji: string } | null> {
   try {
     const res = await tfetch('https://api.alternative.me/fng/?limit=1')
-    if (!res.ok) return ''
+    if (!res.ok) return null
     const d = await res.json()
     const row = d && d.data ? d.data[0] : null
     const v = Number(row && row.value)
     const cls = String((row && row.value_classification) || '').trim()
-    if (!isFinite(v) || !cls) return ''
-    const emoji = FNG_EMOJI[cls] || ''
-    return 'Fear & Greed Index: ' + v + ' (' + cls + (emoji ? ' ' + emoji : '') + ')'
-  } catch { return '' }
+    if (!isFinite(v) || !cls) return null
+    return { value: v, cls, emoji: FNG_EMOJI[cls] || '😐' }
+  } catch { return null }
 }
 
 // -- Découpe accroche / explication (sans regex) ---------------
@@ -320,21 +319,15 @@ async function fetchIndexPct(def: IdxDef): Promise<string | null> {
     const price = Number(meta.regularMarketPrice)
     const prev = Number(meta.chartPreviousClose ?? meta.previousClose)
     if (!isFinite(price) || !isFinite(prev) || prev === 0) return null
-    return def.flag + ' ' + def.label + ': ' + fmtPct((price - prev) / prev * 100)
+    return def.flag + ' ' + def.label + ' ' + fmtPct((price - prev) / prev * 100)
   } catch { return null }
 }
-async function fetchStockBlock(): Promise<string> {
+async function fetchStockLines(): Promise<{ lines: string[]; weekend: boolean }> {
   const rows = await Promise.all(STOCK_INDICES.map(fetchIndexPct))
   const lines = rows.filter((x): x is string => Boolean(x))
-  if (!lines.length) return ''   // toutes les recuperations ont echoue -> on omet le bloc
-  // Le week-end (sam/dim, heure de Paris) les bourses sont FERMEES : les %
-  // affiches sont figes a la cloture de vendredi soir -> on le precise.
   const wd = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', weekday: 'short' }).format(new Date())
   const weekend = (wd === 'Sat' || wd === 'Sun')
-  const header = weekend
-    ? '📊 World stock markets (closed since Friday evening):'
-    : '📊 World stock markets right now:'
-  return header + NL + lines.join(NL)
+  return { lines, weekend }
 }
 
 // -- Liste FIXE de 6 cryptos (CoinGecko, variation 24h) ---------
@@ -350,7 +343,7 @@ const CRYPTO_LIST: CoinDef[] = [
   { id: 'solana', sym: 'SOL' },
   { id: 'the-open-network', sym: 'GRAM' },
 ]
-async function fetchCryptoBlock(): Promise<string> {
+async function fetchCryptoLines(): Promise<string[]> {
   // Clé CoinGecko + retry : sans clé le endpoint était rate-limité (429) et le
   // Top 6 disparaissait silencieusement du Crypto Evening.
   const key = Deno.env.get('COINGECKO_API_KEY')
@@ -372,12 +365,12 @@ async function fetchCryptoBlock(): Promise<string> {
       const lines = CRYPTO_LIST.map((c) => {
         const p = pctById[c.id]
         if (!isFinite(p)) return ''
-        return '• ' + c.sym + ': ' + fmtPct(p)
+        return '• ' + c.sym + ' ' + fmtPct(p)
       }).filter(Boolean)
-      if (lines.length) return '🪙 Top 6 crypto (24h):' + NL + lines.join(NL)
+      if (lines.length) return lines
     } catch { await new Promise((r) => setTimeout(r, 800)) }
   }
-  return ''
+  return []
 }
 
 // -- Laius du soir : POURQUOI ca monte/baisse (grounded) --------
@@ -408,25 +401,38 @@ function formatPromptEveningBlurb(facts: string): string {
   ].join(NL)
 }
 
-async function generateEvening(): Promise<{ ok: boolean; text: string; reason: string; logText?: string }> {
-  const [stockBlock, cryptoBlock, fngLine] = await Promise.all([fetchStockBlock(), fetchCryptoBlock(), fetchFearGreedLine()])
+// Assemble le Crypto Evening (HTML) dans une langue donnée. Données (Top 6,
+// indices, valeur F&G) = langue-neutre ; seuls les libellés + le laius changent.
+function buildEvening(lang: 'en' | 'fr', fng: { value: number; cls: string; emoji: string } | null,
+  cryptoLines: string[], stock: { lines: string[]; weekend: boolean }, blurb: string): string {
+  const fr = lang === 'fr'
+  const L = fr ? {
+    title: 'Crypto Evening', top6: 'Top 6 Cryptos (24h)', markets: 'Marchés mondiaux',
+    when: stock.weekend ? 'clôture de vendredi' : 'en temps réel', snap: 'Aperçu du marché', fng: 'Indice Fear &amp; Greed',
+  } : {
+    title: 'Crypto Evening', top6: 'Top 6 Cryptos (24h)', markets: 'Global Markets',
+    when: stock.weekend ? 'Friday close' : 'right now', snap: 'Market Snapshot', fng: 'Fear &amp; Greed Index',
+  }
+  const parts: string[] = ['🏙️ <b>' + L.title + '</b>']
+  if (fng) parts.push('', fng.emoji + ' <b>' + L.fng + ': ' + fng.value + ' — ' + esc(fng.cls) + '</b>')
+  if (cryptoLines.length) parts.push('', '🪙 <b>' + L.top6 + '</b>', ...cryptoLines)
+  if (stock.lines.length) parts.push('', '📈 <b>' + L.markets + '</b> <i>(' + L.when + ')</i>', ...stock.lines)
+  if (blurb) parts.push('', '📊 <b>' + L.snap + '</b>', esc(blurb))
+  return parts.join(NL)
+}
+async function generateEvening(): Promise<{ ok: boolean; en: string; fr: string; reason: string; logText: string }> {
+  const [stock, cryptoLines, fng] = await Promise.all([fetchStockLines(), fetchCryptoLines(), fetchFngPiece()])
   const facts = await groundedSearch(searchPromptEveningMood())
-  let blurb = ''
+  let blurbEn = ''
   if (facts && facts.toUpperCase().indexOf('NONE') !== 0) {
     const b = await formatCall(formatPromptEveningBlurb(facts))
-    if (b && b.toUpperCase().indexOf('NONE') !== 0) blurb = b.trim()
+    if (b && b.toUpperCase().indexOf('NONE') !== 0) blurbEn = b.trim()
   }
-  if (!blurb && !stockBlock && !cryptoBlock) return { ok: false, text: '', reason: 'evening: ni laius ni donnees marche' }
-  // Ordre voulu : les DONNEES d'abord (cryptos puis bourses), l'indice Fear &
-  // Greed juste apres, puis le laius A LA FIN.
-  const parts: string[] = [SLOT_HOOK.evening]
-  if (cryptoBlock) parts.push('', cryptoBlock)
-  if (stockBlock) parts.push('', stockBlock)
-  if (fngLine) parts.push('', fngLine)
-  if (blurb) parts.push('', blurb)
-  // On ne JOURNALISE que le laius : le recap Crypto Night le reprend tel quel.
-  const logText = blurb || 'Markets & crypto mood update this evening.'
-  return { ok: true, text: parts.join(NL), reason: '', logText }
+  if (!blurbEn && !stock.lines.length && !cryptoLines.length) return { ok: false, en: '', fr: '', reason: 'evening: ni laius ni donnees marche', logText: '' }
+  const blurbFr = blurbEn ? await translatePiece(blurbEn) : ''
+  const en = buildEvening('en', fng, cryptoLines, stock, blurbEn)
+  const fr = buildEvening('fr', fng, cryptoLines, stock, blurbFr)
+  return { ok: true, en, fr, reason: '', logText: blurbEn || 'Markets & crypto mood update this evening.' }
 }
 
 // == CRYPTO NIGHT (récap du jour) ==============================
@@ -440,49 +446,82 @@ function searchPromptMacro(): string {
   ].join(NL)
 }
 
-function formatPromptNight(topics: string[], macroFacts: string, fng: string): string {
+function nightPrompt(lang: 'English' | 'French', topics: string[], macroFacts: string): string {
   const newsBlock = topics.length ? topics.map((n, i) => (i + 1) + '. ' + n).join(NL) : '(none)'
   const macro = (macroFacts && macroFacts.toUpperCase().indexOf('NONE') !== 0) ? macroFacts : '(none)'
   return [
-    'You are Francis the rooster, mascot of the $FRANC community memecoin. Write the end-of-day "Crypto Night" wrap. Audience is INTERNATIONAL.',
+    'You are Francis the rooster, mascot of the $FRANC community. Write the end-of-day crypto recap IN ' + lang.toUpperCase() + ', for an international audience.',
     '',
-    'A) The crypto stories $FRANC published today, in chronological order:',
+    'A) Crypto stories $FRANC published today (chronological):',
     newsBlock,
     '',
-    'B) Biggest macro/geopolitical event today (researched):',
+    'B) Biggest macro / geopolitical event today (researched):',
     macro,
     '',
-    'C) Crypto Fear & Greed Index today: ' + fng,
-    '',
-    'Write the wrap EXACTLY in this structure, nothing before the first 👉 line:',
-    '👉 <one-sentence recap of story 1>',
-    '👉 <one-sentence recap of story 2>',
-    '👉 <one-sentence recap of story 3>',
-    '',
-    '🌍 <ONE line naming the single biggest macro/geopolitical event from B, connected to the market. If B is (none), OMIT this entire line.>',
-    '',
-    '📉 Sentiment: <risk-on or risk-off in a few words> - Fear & Greed: ' + fng,
+    'Produce a STRUCTURED recap using EXACTLY this marker format (nothing before, no title):',
+    'SENTIMENT: <market mood in 2-4 words, e.g. "Risk-off">',
+    'MOOD: <ONE short sentence explaining the mood>',
+    'SECTION: <emoji> <short theme title> :: <bullet sentence> :: <bullet sentence> :: <bullet sentence>',
+    'SECTION: <emoji> <short theme title> :: <bullet> :: <bullet>',
     '',
     'RULES:',
-    '- Write ONE 👉 bullet PER story in A, in the SAME order. Fewer stories = fewer bullets.',
-    '- If a story concerns a specific country (especially France), NAME the country explicitly.',
-    '- 500 CHARACTERS MAXIMUM total. One tight sentence per line.',
-    '- Base everything ONLY on the material above. NEVER invent. NO financial advice, never say "moon/pump/buy/sell".',
-    '- Keep the 👉 (and 🌍 if used) and 📉 markers exactly, with a blank line before 📉. Reproduce the Fear & Greed value exactly. No title line.',
+    '- GROUP the day stories into 2 to 4 thematic SECTION lines (e.g. a security incident, "Markets", "Macro"). Each SECTION = one emoji + a short title, then 2 to 3 short bullet sentences separated by " :: ".',
+    '- Base everything ONLY on the material above (A and B). NEVER invent. If B is (none), do NOT add a Macro section.',
+    '- Each bullet is ONE short factual sentence. No financial advice, never "moon/pump/buy/sell".',
+    '- Keep the markers EXACTLY: "SENTIMENT:", "MOOD:", "SECTION:" and the " :: " separators. One SECTION per line.',
     '',
-    'Output ONLY the wrap, nothing else.',
+    'Output ONLY these marker lines.',
   ].join(NL)
 }
-
-async function generateNight(): Promise<{ ok: boolean; text: string; reason: string }> {
-  const [topics, fng] = await Promise.all([fetchTodayTopics(), fetchFearGreed()])
-  const fngValue = fng || 'n/a'
-  const macroFacts = await groundedSearch(searchPromptMacro())
-  const out = await formatCall(formatPromptNight(topics, macroFacts, fngValue))
-  if (out && out.indexOf('👉') >= 0) {
-    return { ok: true, text: '🌙 Crypto Night:' + NL + NL + NIGHT_INTRO + NL + out, reason: '' }
+type NightData = { sentiment: string; mood: string; sections: { emoji: string; title: string; bullets: string[] }[] }
+function parseNight(s: string): NightData {
+  const out: NightData = { sentiment: '', mood: '', sections: [] }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^SENTIMENT:/i.test(line)) out.sentiment = line.replace(/^SENTIMENT:/i, '').trim()
+    else if (/^MOOD:/i.test(line)) out.mood = line.replace(/^MOOD:/i, '').trim()
+    else if (/^SECTION:/i.test(line)) {
+      const segs = line.replace(/^SECTION:/i, '').split('::').map((x) => x.trim()).filter(Boolean)
+      if (!segs.length) continue
+      const head = segs[0]; const sp = head.indexOf(' ')
+      const emoji = sp > 0 ? head.slice(0, sp) : '•'
+      const title = sp > 0 ? head.slice(sp + 1).trim() : head
+      if (title) out.sections.push({ emoji, title, bullets: segs.slice(1) })
+    }
   }
-  return { ok: false, text: '', reason: 'format inattendu (out=' + out.slice(0, 60) + ')' }
+  return out
+}
+const NIGHT_SEP = '—'.repeat(10)
+function buildNight(lang: 'en' | 'fr', fng: { value: number; cls: string; emoji: string } | null, p: NightData): string {
+  const fr = lang === 'fr'
+  const L = fr
+    ? { title: 'Crypto Night', sentiment: 'Sentiment du marché', fng: 'Indice Fear &amp; Greed', highlights: 'Points clés du jour', recap: "Voilà le récap crypto du jour. À demain !", cautious: 'Prudence' }
+    : { title: 'Crypto Night', sentiment: 'Market Sentiment', fng: 'Fear &amp; Greed Index', highlights: "Today's Highlights", recap: "That's today's crypto recap. See you tomorrow!", cautious: 'Cautious' }
+  const parts: string[] = ['🌙 <b>' + L.title + '</b>']
+  parts.push('', '📈 <b>' + L.sentiment + '</b>')
+  if (fng) parts.push(fng.emoji + ' ' + L.fng + ': ' + fng.value + '/100 (' + esc(fng.cls.toUpperCase()) + ')')
+  if (p.sentiment || p.mood) {
+    parts.push('', '⚠️ <b>' + esc(p.sentiment || L.cautious) + '</b>')
+    if (p.mood) parts.push(esc(p.mood))
+  }
+  parts.push('', NIGHT_SEP, '📋 <b>' + L.highlights + '</b>')
+  for (const sec of p.sections) parts.push('', esc(sec.emoji) + ' <b>' + esc(sec.title) + '</b>', ...sec.bullets.map((b) => '• ' + esc(b)))
+  parts.push('', NIGHT_SEP, '🐔 <b>' + esc(L.recap) + '</b>')
+  return parts.join(NL)
+}
+async function generateNight(): Promise<{ ok: boolean; en: string; fr: string; reason: string; logText: string }> {
+  const [topics, fng] = await Promise.all([fetchTodayTopics(), fetchFngPiece()])
+  const macroFacts = await groundedSearch(searchPromptMacro())
+  const [enStruct, frStruct] = await Promise.all([
+    formatCall(nightPrompt('English', topics, macroFacts)),
+    formatCall(nightPrompt('French', topics, macroFacts)),
+  ])
+  const enP = parseNight(enStruct)
+  const frP = parseNight(frStruct)
+  if (!enP.sections.length && !enP.mood) return { ok: false, en: '', fr: '', reason: 'night: structure vide (out=' + (enStruct || '').slice(0, 60) + ')', logText: '' }
+  const en = buildNight('en', fng, enP)
+  const fr = buildNight('fr', fng, frP.sections.length ? frP : enP)
+  return { ok: true, en, fr, reason: '', logText: enP.mood || 'Crypto recap of the day.' }
 }
 
 // -- Traduction FR (3.5-flash-lite, repli 3.1) -----------------
@@ -518,6 +557,15 @@ async function translateReliable(prompt: string, src: string, temperature = 0.3)
     } catch (e) { console.error('translateReliable', model, String(e)) }
   }
   return best
+}
+function esc(s: string): string { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function stripTags(s: string): string { return (s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') }
+// Traduit un COURT texte (laius / puce) en français fiable ; renvoie la source si échec.
+async function translatePiece(text: string): Promise<string> {
+  if (!text) return ''
+  const prompt = 'Translate this short text into natural, fluent French. Keep tickers ($X), numbers, %, prices and proper names unchanged. Translate EVERYTHING else. Output ONLY the French translation.' + NL + NL + text
+  const out = await translateReliable(prompt, text, 0.3)
+  return translationLooksValid(text, out) ? out : text
 }
 async function translateToFrench(text: string): Promise<string> {
   const prompt = [
@@ -625,33 +673,38 @@ Deno.serve(async (req: Request) => {
     : (kind === 'evening') ? generateEvening() : generateNews(kind as Slot)
 
   if (dryRun) {
-    const r = await gen()
-    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: r.text.length, text: r.text }, null, 2),
+    const r: any = await gen()
+    const en = r.en || r.text || ''
+    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: en.length, en, fr: r.fr }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   const bg = (async () => {
     try {
-      const result = await gen()
+      const result: any = await gen()
       if (!result.ok) { console.error('daily-crypto[' + kind + '] échec:', result.reason); return }
+      // evening / night = format STRUCTURÉ HTML (EN+FR déjà construits) ; morning /
+      // midday = actu simple (texte EN puis traduction FR).
+      const structured = kind === 'evening' || kind === 'night'
+      let en = '', frText = ''
+      if (structured) {
+        en = result.en; frText = result.fr
+      } else {
+        en = result.text
+        const fr = await translateToFrench(en)
+        frText = translationLooksValid(en, fr) ? fr : en
+      }
       // Mode "ownerOnly" : uniquement la copie owner (pour X), AUCUN post groupe.
-      if (ownerOnly) { await dmOwnerCopy(botToken, result.text); console.log('daily-crypto[' + kind + '] ownerOnly envoyé'); return }
+      if (ownerOnly) { await dmOwnerCopy(botToken, stripTags(en)); console.log('daily-crypto[' + kind + '] ownerOnly envoyé'); return }
       const imgUrl = imageUrlFor(kind)
-      const en = result.text
-      const fr = await translateToFrench(en)   // essaie 3.5 puis 3.1, valide chaque sortie
-      // Traduction valide → FR ; sinon repli COHÉRENT sur l'anglais (jamais un
-      // en-tête FR collé à un corps anglais).
-      const frText = translationLooksValid(en, fr) ? fr : en
-      // 1) EN (défaut) -> The Chicken Coop, Crypto Coop (1490) — bouton 🇬🇧/🇫🇷 pré-enregistré
-      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, imgUrl, 'en', en, frText)
+      // EN (défaut) -> The Chicken Coop, Crypto Coop — bouton 🇬🇧/🇫🇷 pré-enregistré.
+      await postI18n(botToken, chatId, CRYPTO_THREAD_EN, imgUrl, 'en', en, frText, structured)
       // Le soir on ne journalise QUE le laius (repris par le recap Night).
-      if (kind !== 'night') await logDailyTopic(kind, (result as any).logText || en)
+      if (kind !== 'night') await logDailyTopic(kind, result.logText || stripTags(en))
       // Copie EN -> owner (pour X) pour le Crypto Evening (18h55) ET le Crypto Night (20h45).
-      if (kind === 'evening' || kind === 'night') await dmOwnerCopy(botToken, en)
-      // Poulailler supprimé : plus d'envoi FR séparé. La version FR reste
-      // accessible via le bouton 🇬🇧/🇫🇷 dans The Chicken Coop.
+      if (kind === 'evening' || kind === 'night') await dmOwnerCopy(botToken, stripTags(en))
       await markSent(KIND_JOB[kind] || ('crypto-' + kind))
-      console.log('daily-crypto[' + kind + '] posté:', result.text.slice(0, 80))
+      console.log('daily-crypto[' + kind + '] posté:', (result.logText || stripTags(en)).slice(0, 80))
     } catch (e) { console.error('daily-crypto[' + kind + '] bg exception:', String(e)) }
   })()
   ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)

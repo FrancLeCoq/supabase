@@ -234,43 +234,68 @@ async function generateWorld(slot: WSlot): Promise<{ ok: boolean; frText: string
   return { ok: true, frText: def.hookFr + NL + NL + splitAccroche(msg), reason: '' }
 }
 
-// == BILAN DU SOIR (wr_night, sans recherche) ==================
-function formatPromptNight(topics: string[]): string {
+// == DAY IN REVIEW (wr_night, sans recherche) — format structuré ===
+function esc(s: string): string { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function stripTags(s: string): string { return (s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') }
+function dayReviewPrompt(lang: 'English' | 'French', topics: string[]): string {
   const block = topics.map((n, i) => (i + 1) + '. ' + n).join(NL)
   return [
-    "Tu es Francis le coq. Fais le bilan de fin de journée de l'actu MONDE / ÉCONOMIE / TECH pour une chaîne Telegram grand public FRANCOPHONE.",
+    'You are Francis the rooster. Write the end-of-day WORLD / ECONOMY / TECH recap IN ' + lang.toUpperCase() + ' for a general Telegram audience.',
     '',
-    "Voici les sujets publiés aujourd'hui, dans l'ordre :",
+    "Today's stories (in order):",
     block,
     '',
-    'Écris le bilan EXACTEMENT dans cette structure (rien avant la 1re ligne 👉) :',
-    '👉 <résumé en UNE phrase du sujet 1>',
-    '👉 <résumé en UNE phrase du sujet 2>',
-    '👉 <résumé en UNE phrase du sujet 3>',
+    'Produce a STRUCTURED recap using EXACTLY this marker format (nothing before, no title):',
+    'BIG: <flag/emoji> <the SINGLE biggest story of the day in ONE sentence>',
+    'BRIEF: <flag/emoji> <short item> | <flag/emoji> <short item> | <flag/emoji> <short item>',
+    'IMPACT: <ONE sentence on the market / geopolitical impact of the day>',
+    'TOMORROW: <ONE sentence on what to watch tomorrow>',
     '',
-    '🌍 Point de vigilance : <UNE phrase sur le principal risque / la tension à garder à l’œil qui ressort des sujets du jour>',
+    'RULES:',
+    '- BIG = the most important story. BRIEF = the OTHER stories, one short clause each, each prefixed by a relevant COUNTRY FLAG or emoji, separated by " | " (2 to 5 items).',
+    '- If a story concerns a specific country (especially France), use its flag and NAME it.',
+    '- Base everything ONLY on the stories above. NEVER invent. Factual and neutral.',
+    '- Keep the markers EXACTLY: "BIG:", "BRIEF:", "IMPACT:", "TOMORROW:" and the " | " separators.',
     '',
-    '👀 À surveiller demain : <UNE phrase sur ce qui pourrait se passer demain à partir des sujets du jour>',
-    '',
-    'RÈGLES :',
-    '- UNE puce 👉 PAR sujet ci-dessus, dans le MÊME ordre. Moins de sujets = moins de puces.',
-    '- Si un sujet concerne un pays précis (surtout la France), PRÉCISE le pays.',
-    "- Les lignes « 🌍 Point de vigilance » et « 👀 À surveiller demain » sont OPTIONNELLES : ne les mets QUE si elles découlent logiquement des sujets du jour et apportent une info cohérente. Si tu n'as rien de pertinent ou de cohérent, OMETS entièrement la ligne concernée (ne l'écris pas du tout, n'invente rien).",
-    '- 700 CARACTÈRES MAXIMUM au total. Une seule phrase courte par ligne.',
-    "- Base-toi UNIQUEMENT sur les sujets ci-dessus. N'invente JAMAIS. Garde les marqueurs 👉 / 🌍 / 👀 exactement. Aucun titre.",
-    '',
-    'Réponds UNIQUEMENT avec le bilan, rien d autre.',
+    'Output ONLY these marker lines.',
   ].join(NL)
 }
-
-async function generateWorldNight(): Promise<{ ok: boolean; frText: string; reason: string }> {
-  const topics = await fetchTodayWorldTopics()
-  if (topics.length === 0) return { ok: false, frText: '', reason: 'aucune actu du jour' }
-  const out = await formatCall(formatPromptNight(topics))
-  if (out && out.indexOf('👉') >= 0) {
-    return { ok: true, frText: NIGHT_HOOK_FR + NL + NL + out, reason: '' }
+type ReviewData = { big: string; briefs: string[]; impact: string; tomorrow: string }
+function parseReview(s: string): ReviewData {
+  const out: ReviewData = { big: '', briefs: [], impact: '', tomorrow: '' }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^BIG:/i.test(line)) out.big = line.replace(/^BIG:/i, '').trim()
+    else if (/^BRIEF:/i.test(line)) out.briefs = line.replace(/^BRIEF:/i, '').split('|').map((x) => x.trim()).filter(Boolean)
+    else if (/^IMPACT:/i.test(line)) out.impact = line.replace(/^IMPACT:/i, '').trim()
+    else if (/^TOMORROW:/i.test(line)) out.tomorrow = line.replace(/^TOMORROW:/i, '').trim()
   }
-  return { ok: false, frText: '', reason: 'format inattendu' }
+  return out
+}
+function buildReview(lang: 'en' | 'fr', p: ReviewData): string {
+  const fr = lang === 'fr'
+  const L = fr
+    ? { title: 'Le jour en revue', big: 'À la une', brief: 'En bref', impact: 'Impact marché', tomorrow: 'Demain' }
+    : { title: 'Day in Review', big: 'Big Story', brief: 'In Brief', impact: 'Market Impact', tomorrow: 'Tomorrow' }
+  const parts: string[] = ['🌙 <b>' + L.title + '</b>']
+  if (p.big) parts.push('', '🔥 <b>' + L.big + '</b>', esc(p.big))
+  if (p.briefs.length) parts.push('', '⚡ <b>' + L.brief + '</b>', ...p.briefs.map((b) => '• ' + esc(b)))
+  if (p.impact) parts.push('', '🎯 <b>' + L.impact + '</b>', esc(p.impact))
+  if (p.tomorrow) parts.push('', '🍎 <b>' + L.tomorrow + '</b>', esc(p.tomorrow))
+  return parts.join(NL)
+}
+async function generateWorldNight(): Promise<{ ok: boolean; en: string; fr: string; reason: string }> {
+  const topics = await fetchTodayWorldTopics()
+  if (topics.length === 0) return { ok: false, en: '', fr: '', reason: 'aucune actu du jour' }
+  const [enStruct, frStruct] = await Promise.all([
+    formatCall(dayReviewPrompt('English', topics)),
+    formatCall(dayReviewPrompt('French', topics)),
+  ])
+  const enP = parseReview(enStruct); const frP = parseReview(frStruct)
+  if (!enP.big && !enP.briefs.length) return { ok: false, en: '', fr: '', reason: 'night: structure vide (out=' + (enStruct || '').slice(0, 60) + ')' }
+  const en = buildReview('en', enP)
+  const fr = buildReview('fr', (frP.big || frP.briefs.length) ? frP : enP)
+  return { ok: true, en, fr, reason: '' }
 }
 
 // Vrai si `out` est une traduction PLAUSIBLE de `src` : ni vide, ni tronquée
@@ -355,20 +380,21 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
 
 // ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
 const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
-async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string, html = false): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key || !messageId) return
   try {
     await tfetch(url + '/rest/v1/news_i18n', {
       method: 'POST',
       headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr, html }),
     })
   } catch (e) { console.error('storeI18n', String(e)) }
 }
-async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string, html = false): Promise<void> {
   const text = (defaultLang === 'fr') ? fr : en
   const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  if (html) base.parse_mode = 'HTML'
   if (threadId) base.message_thread_id = threadId
   let messageId = 0
   if (imgUrl) {
@@ -377,7 +403,7 @@ async function postI18n(token: string, chatId: number, threadId: number, imgUrl:
   if (!messageId) {
     try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
   }
-  await storeI18n(chatId, messageId, en, fr)
+  await storeI18n(chatId, messageId, en, fr, html)
 }
 
 // Copie EN -> owner uniquement (pour coller sur X). SANS lien : le lien t.me
@@ -440,31 +466,35 @@ Deno.serve(async (req: Request) => {
   const gen = () => (kind === 'wr_night') ? generateWorldNight() : generateWorld(kind as WSlot)
 
   if (dryRun) {
-    const r = await gen()
-    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: r.frText.length, text: r.frText }, null, 2),
+    const r: any = await gen()
+    const t = r.frText || r.en || ''
+    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: t.length, en: r.en, fr: r.fr, text: r.frText }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
   const bg = (async () => {
     try {
-      const result = await gen()
+      const result: any = await gen()
       if (!result.ok) { console.error('daily-world[' + kind + '] echec:', result.reason); return }
       const imgUrl = imageUrlFor(kind)
-      const hookEn = (kind === 'wr_night') ? NIGHT_HOOK_EN : WORLD[kind as WSlot].hookEn
+      // Day in Review (wr_night) : format STRUCTURÉ HTML (EN + FR déjà construits).
+      if (kind === 'wr_night') {
+        await postI18n(botToken, chatId, WORLD_THREAD_EN, imgUrl, 'en', result.en, result.fr, true)
+        await dmOwnerCopy(botToken, stripTags(result.en))   // recap 21h40 -> owner (pour X)
+        await markSent(KIND_JOB[kind] || ('world-' + kind))
+        console.log('daily-world[wr_night] poste')
+        return
+      }
+      // Autres rubriques : FR natif -> traduction EN, puis pré-enregistrement.
+      const hookEn = WORLD[kind as WSlot].hookEn
       const fr = result.frText
-      // Traduction EN avant de poster, pour pré-enregistrer les DEUX versions.
       const frBody = fr.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
       const enBody = await translateToEnglish(frBody)   // essaie 3.5 puis 3.1, valide chaque sortie
-      // Traduction valide → EN (en-tête EN + corps EN). Sinon repli COHÉRENT sur le
-      // FR complet (jamais d'en-tête EN collé à un corps FR).
       const en = translationLooksValid(frBody, enBody) ? (hookEn + NL + NL + enBody) : fr
-      // The Chicken Coop (World Roost), EN par défaut + bouton 🇬🇧/🇫🇷 (FR pré-enregistré).
-      // Poulailler supprimé : plus d'envoi FR séparé.
       await postI18n(botToken, chatId, WORLD_THREAD_EN, imgUrl, 'en', en, fr)
-      if (kind !== 'wr_night') await logDailyTopic(kind, fr)
-      if (kind === 'wr_night') await dmOwnerCopy(botToken, en)   // recap 21h40 -> owner (pour X)
+      await logDailyTopic(kind, fr)
       await markSent(KIND_JOB[kind] || ('world-' + kind))
-      console.log('daily-world[' + kind + '] poste:', result.frText.slice(0, 80))
+      console.log('daily-world[' + kind + '] poste:', fr.slice(0, 80))
     } catch (e) { console.error('daily-world[' + kind + '] bg exception:', String(e)) }
   })()
   ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
