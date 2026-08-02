@@ -27,6 +27,10 @@ const FEED = 'https://trumpstruth.org/feed'
 const COOP_CHAT = -1003842240104, COOP_THREAD = 2115   // The Chicken Coop (EN)
 const POUL_CHAT = -1004352289820, POUL_THREAD = 519    // Le Poulailler (FR)
 const WINDOW_MIN = 20                                  // cron 15 min + 5 min de marge (le verrou évite les doublons)
+// Le NAS s'éteint 23h→07h30 (heure Paris). Au 1er réveil du matin, on rattrape
+// les posts publiés pendant la coupure : fenêtre élargie à 8h30 sur ce SEUL run
+// (le verrou anti-doublon évite tout renvoi si certains sont déjà passés).
+const MORNING_CATCHUP_MIN = 510                        // 8 h 30
 const DEDUP_TTL = 7 * 24 * 3600                        // verrou anti-doublon (7 j)
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 
@@ -213,13 +217,21 @@ async function latestOriginal(): Promise<TPost | null> {
 
 interface TPost { link: string; oid: string; text: string; t: number }
 
-async function collectFresh(): Promise<{ posts: TPost[]; reason: string }> {
+// Heure de Paris (h/m) + date civile, pour détecter le réveil matinal du NAS.
+function parisNow(): { h: number; m: number; date: string } {
+  const f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit' })
+  const p: Record<string, string> = {}
+  for (const part of f.formatToParts(new Date())) p[part.type] = part.value
+  return { h: Number(p.hour), m: Number(p.minute), date: p.year + '-' + p.month + '-' + p.day }
+}
+
+async function collectFresh(windowMin = WINDOW_MIN): Promise<{ posts: TPost[]; reason: string }> {
   const res = await tfetch(FEED, { headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml' } })
   if (!res.ok) return { posts: [], reason: 'feed HTTP ' + res.status }
   const xml = await res.text()
   const raw = xml.split('<item>').slice(1).map((s) => s.split('</item>')[0])
   const now = Date.now()
-  const WINDOW = WINDOW_MIN * 60 * 1000
+  const WINDOW = windowMin * 60 * 1000
   const isRepost = (d: string) => /RT:\s*https?:\/\//i.test(d) || d.indexOf('quote-inline') >= 0
   const posts: TPost[] = []
   for (const it of raw) {
@@ -269,7 +281,16 @@ Deno.serve(async (req: Request) => {
 
   const bg = (async () => {
     try {
-      const { posts, reason } = await collectFresh()
+      // Rattrapage matinal : au 1er run entre 07h30 et 07h59 (Paris), on élargit
+      // la fenêtre à 8h30 pour absorber les posts publiés NAS éteint. Verrou
+      // journalier -> une seule fois par jour ; le verrou anti-doublon fait le reste.
+      let windowMin = WINDOW_MIN
+      const pnow = parisNow()
+      if (pnow.h === 7 && pnow.m >= 30) {
+        const firstToday = await claimSlot(supabase, 'trump:catchup:' + pnow.date, 26 * 3600)
+        if (firstToday) { windowMin = MORNING_CATCHUP_MIN; console.log('trump-news: rattrapage matinal (fenêtre 8h30)') }
+      }
+      const { posts, reason } = await collectFresh(windowMin)
       if (posts.length === 0) { if (reason && reason !== 'aucun post récent') console.error('trump-news:', reason); return }
       for (const p of posts) {
         // Anti-doublon atomique : on ne poste qu'à la 1re prise du verrou.

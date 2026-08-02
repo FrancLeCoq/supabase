@@ -46,11 +46,11 @@ const KIND_IMAGE: Record<string, string> = {
   wr_tech: 'Cocorico Tech Info.png',
   wr_evening: 'Le Monde Ce Soir.png',
   wr_night: 'Actu du jour en bref.png',
-  // French Coop (topic 2290) — décommente quand les bannières FR sont prêtes
-  // (uploader dans le bucket public "assets") :
-  // fr_morning: 'French Coop Matin.png',
-  // fr_eu: 'French Coop Europe.png',
-  // fr_evening: 'French Coop Soir.png',
+  // French Coop (topic 2290) — bannières à uploader dans le bucket public "assets".
+  // Tant que le PNG n'existe pas, l'envoi photo échoue et retombe en texte seul.
+  fr_morning: 'midiFR.png',
+  fr_eu: 'expressUE.png',
+  fr_evening: 'soirFR.png',
 }
 function imageUrlFor(kind: string): string {
   const f = KIND_IMAGE[kind]
@@ -100,18 +100,18 @@ const FRENCH_COOP_THREAD = 2290
 type FSlot = 'fr_morning' | 'fr_eu' | 'fr_evening'
 const FRCOOP: Record<FSlot, WDef> = {
   fr_morning: {
-    hookFr: '🇫🇷 L\'actu France du matin :',
-    hookEn: '🇫🇷 France — Morning News:',
+    hookFr: '🇫🇷 🕛 Le Coq de Midi :',
+    hookEn: '🇫🇷 🕛 Le Coq de Midi :',
     directive: "Recherche LA plus grosse actualité FRANÇAISE (France) des dernières 24 heures : politique, société, économie, faits marquants. Choisis l'événement au plus fort impact pour le public français.",
   },
   fr_eu: {
-    hookFr: '🇪🇺 L\'actu Europe :',
-    hookEn: '🇪🇺 Europe — Top Story:',
+    hookFr: '🇪🇺 🕒 Le Cocorico Express :',
+    hookEn: '🇪🇺 🕒 Le Cocorico Express :',
     directive: "Recherche LA plus grosse actualité de l'UNION EUROPÉENNE des dernières 24 heures (institutions UE, décisions de Bruxelles, actualité d'un État membre à portée européenne). Choisis l'événement au plus fort impact européen.",
   },
   fr_evening: {
-    hookFr: '🇫🇷 L\'actu France du soir :',
-    hookEn: '🇫🇷 France — Evening News:',
+    hookFr: '🇫🇷 🌙 Le Cocorico du Soir :',
+    hookEn: '🇫🇷 🌙 Le Cocorico du Soir :',
     directive: "Recherche LA plus grosse actualité FRANÇAISE (France) des dernières 24 heures qui marque cette fin de journée. Choisis l'événement au plus fort impact pour le public français.",
   },
 }
