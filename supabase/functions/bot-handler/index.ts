@@ -5,7 +5,7 @@
 //        /disconnect non destructif (préserve la ligne + stars_unlocked)
 // ══════════════════════════════════════════════════════════════
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 import { FRANCIS_COOLDOWN_MS, FRANCIS_DM_COOLDOWN_MS, FRANCIS_REPLY_DELAY_MS, askFrancisAI, buildBatchedReply, claimReplySlot, fetchChatMemory, isUserPaused, lastFrancisReplyByChat, releaseReplySlot, saveChatMemory } from './francis-ai.ts'
 

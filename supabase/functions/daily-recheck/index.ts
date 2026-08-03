@@ -25,7 +25,7 @@
 //  Sécurité : header x-recheck-secret == RECHECK_SECRET
 //             OU x-cron-secret == CRON_SECRET.
 // ══════════════════════════════════════════════════════════════
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const SPICY_GROUP_ID = -1003962771717        // groupe privé Spicy = Golden Rooster (#General)
 const CHICKEN_COOP = -1003842240104          // The Chicken Coop (groupe bilingue unique)

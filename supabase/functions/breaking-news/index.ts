@@ -17,7 +17,7 @@
 //
 //  Sécurité : header x-cron-secret == CRON_SECRET.
 // ================================================================
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const NL = String.fromCharCode(10)
 const SEARCH_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
