@@ -86,14 +86,12 @@ function racingNewsPrompt(sportLong: string, facts: string, lang: 'English' | 'F
     'Output EXACTLY these marker lines (nothing before or after, no title):',
     'THEME: <emoji> <1 to 3 word category, e.g. Driver Market, Contract, Injury, Team News, Controversy>',
     'HEAD: <ONE short, punchy headline sentence>',
-    'SUMMARY: <2 to 3 clear factual sentences on what happened>',
-    'BULLET: <emoji> <one key fact>',
-    'BULLET: <emoji> <one key fact>',
-    "INSIGHT: <1 to 2 sentences — Francis' level-headed takeaway, NO hype>",
+    'SUMMARY: <exactly 1 to 2 SHORT sentences — the essential only. Keep it light and easy to read>',
+    "INSIGHT: <1 to 2 SHORT punchy sentences — Francis' level-headed takeaway. NO hype, NO 'stay tuned'>",
     'RULES:',
-    '- 2 to 3 BULLET lines, each starting with a relevant emoji.',
+    '- NO bullet points. Keep it tight and airy.',
     '- Base everything ONLY on the facts. NEVER invent names, teams, numbers or results.',
-    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, BULLET:, INSIGHT:. Write the values in ' + lang.toUpperCase() + '.',
+    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, INSIGHT:. Write the values in ' + lang.toUpperCase() + '.',
     '- If the facts are empty or NONE, output only: NONE',
     'Output ONLY the marker lines.',
   ].join(NL)
@@ -117,9 +115,8 @@ function buildRacingNews(sportShort: string, sportEmoji: string, lang: 'en' | 'f
   const parts: string[] = ['<b>' + esc(sportEmoji + ' ' + sportShort + ' Paddock Buzz') + '</b>']
   if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
   if (p.head) parts.push('🚨 ' + esc(p.head))
-  if (p.summary) parts.push('', '<b>📌 ' + sec + '</b>', esc(p.summary))
-  if (p.bullets.length) parts.push('', ...p.bullets.map((b) => '• ' + esc(b)))
-  if (p.insight) parts.push('', '<b>🐓 ' + sig + '</b>', esc(p.insight))
+  if (p.summary) parts.push('', '📌 <b>' + sec + '</b> — ' + esc(p.summary))   // label inline, pas de puces
+  if (p.insight) parts.push('', '🐓 <b>' + sig + '</b>', esc(p.insight))
   return parts.join(NL)
 }
 // En-tête par rubrique. /we et /news ont un en-tête dédié ; le reste garde

@@ -251,14 +251,12 @@ function newsBlockPrompt(facts: string, lang: 'English' | 'French'): string {
     'Output EXACTLY these marker lines (nothing before or after, no title):',
     'THEME: <emoji> <1 to 3 word category, e.g. Artificial Intelligence, Defense, Economy, Elections>',
     'HEAD: <ONE short, punchy headline sentence>',
-    'SUMMARY: <2 to 3 clear factual sentences on what happened>',
-    'BULLET: <flag or emoji> <one key fact>',
-    'BULLET: <flag or emoji> <one key fact>',
-    "INSIGHT: <1 to 2 sentences — Francis' level-headed takeaway, NO hype>",
+    'SUMMARY: <exactly 1 to 2 SHORT sentences — the essential only. NO dates, decree numbers, official names or minutiae unless truly crucial. Keep it light and easy to read>',
+    "INSIGHT: <1 to 2 SHORT punchy sentences — Francis' level-headed takeaway. NO hype, NO 'stay tuned'/'we'll be back'>",
     'RULES:',
-    '- 2 to 3 BULLET lines, each starting with a relevant flag/emoji.',
+    '- NO bullet points. Keep it tight and airy.',
     '- Base everything ONLY on the facts. NEVER invent figures, names or conclusions. Neutral, no bias on sensitive topics.',
-    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, BULLET:, INSIGHT:. Write the values in ' + lang.toUpperCase() + '.',
+    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, INSIGHT:. Write the values in ' + lang.toUpperCase() + '.',
     '- If the facts are empty or NONE, output only: NONE',
     'Output ONLY the marker lines.',
   ].join(NL)
@@ -277,14 +275,13 @@ function parseNewsBlock(s: string): NewsData {
   return out
 }
 function buildNewsBlock(title: string, cfg: NewsId, lang: 'en' | 'fr', p: NewsData): string {
-  const sec = lang === 'fr' ? cfg.secFr : cfg.secEn
+  const sec = lang === 'fr' ? 'En bref' : 'In Brief'   // libellé 📌 générique, léger
   const sig = lang === 'fr' ? cfg.sigFr : cfg.sigEn
   const parts: string[] = ['<b>' + esc(title) + '</b>']
   if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
   if (p.head) parts.push('🚨 ' + esc(p.head))
-  if (p.summary) parts.push('', '<b>📌 ' + esc(sec) + '</b>', esc(p.summary))
-  if (p.bullets.length) parts.push('', ...p.bullets.map((b) => '• ' + esc(b)))
-  if (p.insight) parts.push('', '<b>🐓 ' + esc(sig) + '</b>', esc(p.insight))
+  if (p.summary) parts.push('', '📌 <b>' + sec + '</b> — ' + esc(p.summary))   // label inline, pas de puces
+  if (p.insight) parts.push('', '🐓 <b>' + esc(sig) + '</b>', esc(p.insight))
   return parts.join(NL)
 }
 
