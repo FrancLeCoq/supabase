@@ -93,10 +93,20 @@ async function fetchMedia(statusUrl: string): Promise<string[]> {
     const res = await tfetch(statusUrl, { headers: { 'User-Agent': UA } })
     if (!res.ok) return []
     const html = await res.text()
-    const re = /https:\/\/truth-archive[^"' ]+\/attachments\/[^"' ]+\.(?:png|jpe?g|mp4|gif|webp)/gi
-    const found = html.match(re) || []
-    const seen = new Set<string>(); const out: string[] = []
-    for (const u of found) { if (!seen.has(u)) { seen.add(u); out.push(u) } }
+    const collect = (re: RegExp): string[] => {
+      const found = html.match(re) || []
+      const seen = new Set<string>(); const out: string[] = []
+      for (const u of found) { if (!seen.has(u)) { seen.add(u); out.push(u) } }
+      return out
+    }
+    // 1) motif historique (truth-archive .../attachments/...)
+    let out = collect(/https:\/\/truth-archive[^"'\s)]+\/attachments\/[^"'\s)]+\.(?:png|jpe?g|mp4|gif|webp)/gi)
+    // 2) repli : autres hôtes média Truth Social (linodeobjects / CDN), en
+    //    excluant les avatars et en-têtes de profil (pas des médias du post).
+    if (out.length === 0) {
+      out = collect(/https:\/\/[^"'\s)]*(?:linodeobjects\.com|static-assets-\d+\.truthsocial\.com|media\.truthsocial\.com)[^"'\s)]*\.(?:png|jpe?g|mp4|gif|webp)(?:\?[^"'\s)]*)?/gi)
+        .filter((u) => !/\/(avatars|headers|site_uploads)\//i.test(u))
+    }
     return out.slice(0, 10)   // Telegram : 10 médias max par album
   } catch { return [] }
 }
@@ -165,11 +175,15 @@ async function tgSend(method: string, body: any): Promise<boolean> {
 }
 
 // Poste 1 tweet Trump : header + texte + média(s), dans (chat, thread).
-async function postPost(chat: number, thread: number, header: string, text: string, media: string[]): Promise<boolean> {
+// `link` sert de filet : si un post n'a NI texte NI média récupéré (ex. post
+// image dont l'extraction a échoué), on met le lien source pour ne jamais
+// laisser un en-tête « 👇 » orphelin.
+async function postPost(chat: number, thread: number, header: string, text: string, media: string[], link = ''): Promise<boolean> {
   const caption = (header + (text ? '\n\n' + esc(text) : '')).slice(0, 1024)
   const longText = (header + (text ? '\n\n' + esc(text) : ''))
   if (media.length === 0) {
-    return await tgCall('sendMessage', { chat_id: chat, message_thread_id: thread, text: longText, parse_mode: 'HTML', disable_web_page_preview: false })
+    const body = text ? longText : (header + (link ? '\n\n👉 ' + esc(link) : ''))
+    return await tgCall('sendMessage', { chat_id: chat, message_thread_id: thread, text: body, parse_mode: 'HTML', disable_web_page_preview: false })
   }
   // Si le texte dépasse la limite de légende, on l'envoie d'abord en message.
   const capTooLong = longText.length > 1024
@@ -260,7 +274,7 @@ Deno.serve(async (req: Request) => {
     const p = await latestOriginal()
     if (!p) return new Response(JSON.stringify({ error: 'aucun post original trouvé' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     const media = await fetchMedia(p.link)
-    const coopOk = await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media)
+    const coopOk = await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media, p.link)
     // Poulailler supprimé : plus d'envoi FR.
     await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)   // évite un doublon par le cron
     return new Response(JSON.stringify({ oid: p.oid, mediaCount: media.length, coopOk, text: p.text.slice(0, 150) }, null, 2),
@@ -277,7 +291,7 @@ Deno.serve(async (req: Request) => {
         if (!first) continue
         const media = await fetchMedia(p.link)
         // EN -> The Chicken Coop (Poulailler supprimé : plus d'envoi FR).
-        await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media)
+        await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media, p.link)
         console.log('trump-news poste', p.oid, 'media', media.length, p.text.slice(0, 60))
       }
     } catch (e) { console.error('trump-news bg ex:', String(e)) }

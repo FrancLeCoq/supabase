@@ -897,8 +897,23 @@ Deno.serve(async (req) => {
       const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       const { data: conn } = await sb.from('business_connections')
         .select('owner_id, can_reply, is_enabled').eq('id', bm.business_connection_id).single()
-      // Connexion inconnue / désactivée / sans droit de réponse → on ne répond pas.
-      if (!conn || conn.is_enabled === false || conn.can_reply === false) return new Response('ok')
+      // Connexion inconnue / désactivée / sans droit de réponse → on ne répond
+      // pas, MAIS on alerte l'OWNER une fois/jour (sinon échec 100 % silencieux :
+      // Francis reçoit le DM mais ne peut pas répondre).
+      if (!conn || conn.is_enabled === false || conn.can_reply === false) {
+        try {
+          const parisDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
+          if (await claimReplySlot(sb, 'bmgated:' + parisDay, 90000)) {
+            const why = !conn ? 'connexion Business inconnue (jamais enregistrée)'
+              : (conn.is_enabled === false ? 'connexion Business désactivée' : 'droit de réponse non accordé')
+            await sendMessage(bToken, Number(OWNER_ID),
+              `⚠️ <b>DM Business reçu — Francis n'a PAS pu répondre</b>\n\n` +
+              `Raison : ${why}.\n\n` +
+              `👉 Telegram → Réglages → Entreprise → Chatbots → reconnecte @FrancisLeCoqBot en lui laissant le droit de répondre, puis relance /enablesecretary.`)
+          }
+        } catch (_) { /* best-effort */ }
+        return new Response('ok')
+      }
       // Anti-boucle : ne JAMAIS répondre aux messages du titulaire du compte
       // Business (ses propres messages ET les réponses déjà envoyées par Francis).
       if (conn.owner_id && String(bm.from.id) === conn.owner_id) return new Response('ok')
