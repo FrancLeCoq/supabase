@@ -227,50 +227,94 @@ function searchPromptWorld(def: WDef, covered: string[]): string {
   ].join(NL)
 }
 
-function formatPromptWorld(facts: string): string {
+// ── Identité par rubrique : section (📌) + signature (🐓), EN + FR ──
+type NewsId = { secEn: string; secFr: string; sigEn: string; sigFr: string }
+const NEWS_ID: Record<string, NewsId> = {
+  wr_morning: { secEn: 'Global Snapshot', secFr: 'Aperçu mondial', sigEn: "Francis' Global Brief", sigFr: 'Le brief mondial de Francis' },
+  wr_eco:     { secEn: 'Market Snapshot', secFr: 'Aperçu du marché', sigEn: "Francis' Market Insight", sigFr: "L'éclairage marché de Francis" },
+  wr_midday:  { secEn: 'Global Snapshot', secFr: 'Aperçu mondial', sigEn: "Francis' Global Brief", sigFr: 'Le brief mondial de Francis' },
+  wr_tech:    { secEn: 'What Happened', secFr: "Ce qui s'est passé", sigEn: "Francis' Tech Insight", sigFr: "L'éclairage tech de Francis" },
+  wr_evening: { secEn: 'In Brief', secFr: 'En bref', sigEn: "Francis' Global Insight", sigFr: "L'éclairage mondial de Francis" },
+  fr_morning: { secEn: 'France in Brief', secFr: 'La France en bref', sigEn: "Francis' France Brief", sigFr: 'Le brief France de Francis' },
+  fr_eu:      { secEn: 'Europe in Brief', secFr: "L'Europe en bref", sigEn: "Francis' Europe Brief", sigFr: 'Le brief Europe de Francis' },
+  fr_evening: { secEn: 'France in Brief', secFr: 'La France en bref', sigEn: "Francis' France Brief", sigFr: 'Le brief France de Francis' },
+}
+function stripColon(s: string): string { return s.replace(/\s*:\s*$/, '') }
+
+// Prompt structuré : l'IA renvoie des MARQUEURS (jamais de balises HTML), on
+// génère EN et FR séparément puis on habille en HTML → zéro balise traduite.
+function newsBlockPrompt(facts: string, lang: 'English' | 'French'): string {
   return [
-    "Tu es Francis le coq, présentateur d'actualité vif mais fiable pour une chaîne Telegram grand public FRANCOPHONE.",
-    'Voici des FAITS VÉRIFIÉS déjà recherchés sur le sujet du jour :',
-    '---',
-    facts,
-    '---',
-    'Rédige le message final EN FRANÇAIS, clair et vulgarisé pour que tout le monde comprenne.',
-    '',
-    'FORMAT - DEUX blocs séparés par UNE ligne vide :',
-    "(1) une phrase d'accroche COURTE et percutante ;",
-    '(2) une ligne vide, puis UNE ou DEUX phrases qui expliquent simplement.',
-    '',
-    'RÈGLES STRICTES :',
-    '- 235 CARACTÈRES MAXIMUM (un court titre de rubrique est ajouté automatiquement avant ; laisse de la marge).',
-    "- N'écris AUCUN titre, label ni préfixe. Commence directement par l'accroche.",
-    "- Base-toi UNIQUEMENT sur les faits ci-dessus. N'invente JAMAIS de faits, chiffres, noms ou conclusions.",
-    "- AUDIENCE INTERNATIONALE : si l'actu concerne un pays précis (surtout la France), NOMME-le explicitement.",
-    '- 100% factuel et NEUTRE. Sujet politique/géopolitique/conflit : sobrement, aucun parti pris. Un seul emoji maximum.',
-    '- Si les faits valent NONE ou sont vides, réponds exactement : NONE',
-    '',
-    'Réponds UNIQUEMENT avec le message final en français (ou NONE), rien d autre.',
+    'You are Francis the rooster — a sharp but reliable news anchor. Using ONLY the verified facts below, craft ONE clean, easy-to-read news item IN ' + lang.toUpperCase() + '.',
+    'FACTS:',
+    '---', facts, '---',
+    'Output EXACTLY these marker lines (nothing before or after, no title):',
+    'THEME: <emoji> <1 to 3 word category, e.g. Artificial Intelligence, Defense, Economy, Elections>',
+    'HEAD: <ONE short, punchy headline sentence>',
+    'SUMMARY: <2 to 3 clear factual sentences on what happened>',
+    'BULLET: <flag or emoji> <one key fact>',
+    'BULLET: <flag or emoji> <one key fact>',
+    "INSIGHT: <1 to 2 sentences — Francis' level-headed takeaway, NO hype>",
+    'RULES:',
+    '- 2 to 3 BULLET lines, each starting with a relevant flag/emoji.',
+    '- Base everything ONLY on the facts. NEVER invent figures, names or conclusions. Neutral, no bias on sensitive topics.',
+    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, BULLET:, INSIGHT:. Write the values in ' + lang.toUpperCase() + '.',
+    '- If the facts are empty or NONE, output only: NONE',
+    'Output ONLY the marker lines.',
   ].join(NL)
 }
-
-async function generateWorld(slot: WSlot): Promise<{ ok: boolean; frText: string; reason: string }> {
-  const def = WORLD[slot]
-  const covered = await fetchTodayWorldTopics(36)   // anti-doublon sur 36h glissantes
-  const facts = await groundedSearch(searchPromptWorld(def, covered))
-  if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape A: pas d actu' }
-  const msg = await formatCall(formatPromptWorld(facts))
-  if (!msg || msg.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape B: vide/NONE' }
-  return { ok: true, frText: def.hookFr + NL + NL + splitAccroche(msg), reason: '' }
+type NewsData = { theme: string; head: string; summary: string; bullets: string[]; insight: string }
+function parseNewsBlock(s: string): NewsData {
+  const out: NewsData = { theme: '', head: '', summary: '', bullets: [], insight: '' }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
+    else if (/^HEAD:/i.test(line)) out.head = line.replace(/^HEAD:/i, '').trim()
+    else if (/^SUMMARY:/i.test(line)) out.summary = line.replace(/^SUMMARY:/i, '').trim()
+    else if (/^BULLET:/i.test(line)) { const b = line.replace(/^BULLET:/i, '').trim(); if (b) out.bullets.push(b) }
+    else if (/^INSIGHT:/i.test(line)) out.insight = line.replace(/^INSIGHT:/i, '').trim()
+  }
+  return out
+}
+function buildNewsBlock(title: string, cfg: NewsId, lang: 'en' | 'fr', p: NewsData): string {
+  const sec = lang === 'fr' ? cfg.secFr : cfg.secEn
+  const sig = lang === 'fr' ? cfg.sigFr : cfg.sigEn
+  const parts: string[] = ['<b>' + esc(title) + '</b>']
+  if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
+  if (p.head) parts.push('🚨 ' + esc(p.head))
+  if (p.summary) parts.push('', '<b>📌 ' + esc(sec) + '</b>', esc(p.summary))
+  if (p.bullets.length) parts.push('', ...p.bullets.map((b) => '• ' + esc(b)))
+  if (p.insight) parts.push('', '<b>🐓 ' + esc(sig) + '</b>', esc(p.insight))
+  return parts.join(NL)
 }
 
-// == FRENCH COOP (fr_morning..fr_evening) — FR natif, anti-doublon dédié ==
-async function generateFrench(slot: FSlot): Promise<{ ok: boolean; frText: string; reason: string }> {
-  const def = FRCOOP[slot]
-  const covered = await fetchTodayWorldTopics(36, 'fr_*')   // anti-redondance entre news FR
+// Générateur commun (World Roost + French Coop) : facts groundés, puis EN + FR
+// structurés indépendamment (balises jamais traduites).
+async function genNews(slot: string, def: WDef, slotLike: string): Promise<{ ok: boolean; en: string; fr: string; logText: string; reason: string }> {
+  const cfg = NEWS_ID[slot] || NEWS_ID.wr_morning
+  const covered = await fetchTodayWorldTopics(36, slotLike)
   const facts = await groundedSearch(searchPromptWorld(def, covered))
-  if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape A: pas d actu' }
-  const msg = await formatCall(formatPromptWorld(facts))
-  if (!msg || msg.toUpperCase().indexOf('NONE') === 0) return { ok: false, frText: '', reason: 'etape B: vide/NONE' }
-  return { ok: true, frText: def.hookFr + NL + NL + splitAccroche(msg), reason: '' }
+  if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, en: '', fr: '', logText: '', reason: 'etape A: pas d actu' }
+  const [enS, frS] = await Promise.all([
+    formatCall(newsBlockPrompt(facts, 'English')),
+    formatCall(newsBlockPrompt(facts, 'French')),
+  ])
+  const enP = parseNewsBlock(enS)
+  const frP = parseNewsBlock(frS)
+  if (!enP.head && !enP.summary && !frP.head && !frP.summary) return { ok: false, en: '', fr: '', logText: '', reason: 'etape B: structure vide' }
+  const enData = (enP.head || enP.summary) ? enP : frP
+  const frData = (frP.head || frP.summary) ? frP : enP
+  const en = buildNewsBlock(stripColon(def.hookEn), cfg, 'en', enData)
+  const fr = buildNewsBlock(stripColon(def.hookFr), cfg, 'fr', frData)
+  const logText = (enData.theme ? enData.theme + ' — ' : '') + enData.head
+  return { ok: true, en, fr, logText, reason: '' }
+}
+
+async function generateWorld(slot: WSlot): Promise<{ ok: boolean; en: string; fr: string; logText: string; reason: string }> {
+  return await genNews(slot, WORLD[slot], 'wr_*')
+}
+async function generateFrench(slot: FSlot): Promise<{ ok: boolean; en: string; fr: string; logText: string; reason: string }> {
+  return await genNews(slot, FRCOOP[slot], 'fr_*')
 }
 
 // == DAY IN REVIEW (wr_night, sans recherche) — format structuré ===
@@ -510,8 +554,8 @@ Deno.serve(async (req: Request) => {
 
   if (dryRun) {
     const r: any = await gen()
-    const t = r.frText || r.en || ''
-    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: t.length, en: r.en, fr: r.fr, text: r.frText }, null, 2),
+    const t = r.en || r.fr || ''
+    return new Response(JSON.stringify({ kind, ok: r.ok, reason: r.reason, length: t.length, en: r.en, fr: r.fr }, null, 2),
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
@@ -528,29 +572,15 @@ Deno.serve(async (req: Request) => {
         console.log('daily-world[wr_night] poste')
         return
       }
-      // French Coop (fr_*) : FR par DÉFAUT (public FR), bouton « Translate in English 🇬🇧 ».
-      if (isFrCoop) {
-        const def = FRCOOP[kind as FSlot]
-        const fr = result.frText
-        const frBody = fr.split(NL + NL).slice(1).join(NL + NL)
-        const enBody = await translateToEnglish(frBody)
-        const en = translationLooksValid(frBody, enBody) ? (def.hookEn + NL + NL + enBody) : fr
-        await postI18n(botToken, chatId, FRENCH_COOP_THREAD, imgUrl, 'fr', en, fr, false, NLANG_FR_BTN)
-        await logDailyTopic(kind, fr)
-        await markSent(KIND_JOB[kind] || ('world-' + kind))
-        console.log('daily-world[' + kind + '] French Coop poste:', fr.slice(0, 80))
-        return
-      }
-      // Autres rubriques : FR natif -> traduction EN, puis pré-enregistrement.
-      const hookEn = WORLD[kind as WSlot].hookEn
-      const fr = result.frText
-      const frBody = fr.split(NL + NL).slice(1).join(NL + NL) // retire le hook FR
-      const enBody = await translateToEnglish(frBody)   // essaie 3.5 puis 3.1, valide chaque sortie
-      const en = translationLooksValid(frBody, enBody) ? (hookEn + NL + NL + enBody) : fr
-      await postI18n(botToken, chatId, WORLD_THREAD_EN, imgUrl, 'en', en, fr)
-      await logDailyTopic(kind, fr)
+      // wr_* et fr_* : nouveau format STRUCTURÉ (EN + FR déjà construits, HTML gras).
+      // World Roost = EN par défaut (bouton FR) ; French Coop = FR par défaut (bouton EN).
+      const thread = isFrCoop ? FRENCH_COOP_THREAD : WORLD_THREAD_EN
+      const defaultLang = isFrCoop ? 'fr' : 'en'
+      const btn = isFrCoop ? NLANG_FR_BTN : NLANG_BTN
+      await postI18n(botToken, chatId, thread, imgUrl, defaultLang, result.en, result.fr, true, btn)
+      await logDailyTopic(kind, result.logText || stripTags(result.fr))
       await markSent(KIND_JOB[kind] || ('world-' + kind))
-      console.log('daily-world[' + kind + '] poste:', fr.slice(0, 80))
+      console.log('daily-world[' + kind + '] poste (format structuré):', (result.logText || '').slice(0, 80))
     } catch (e) { console.error('daily-world[' + kind + '] bg exception:', String(e)) }
   })()
   ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)

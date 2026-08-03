@@ -278,17 +278,6 @@ function buildPump(lang: 'en' | 'fr', kind: 'pump' | 'dump', coin: Coin, chainNa
     '',
     '🚀 <b>' + L.catalyst + ':</b>',
     esc(catalyst),
-    '',
-    '🐓 <b>' + L.about + '</b>',
-    '',
-    L.waking,
-    '',
-    '🚀 <b>' + L.eco + ':</b>',
-    '🟦 TON: ' + fmtUsd(franc.ton) + ' MC',
-    '🟩 SOL: ' + fmtUsd(franc.sol) + ' MC',
-    '',
-    L.story,
-    '🐓 <b>' + L.coming + '</b>',
   ].join(NL)
 }
 
