@@ -36,6 +36,14 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: '🇫🇷 French Coop',
+    items: [
+      ['fr-morning', '11:35 Le Coq de Midi'],
+      ['fr-eu', '15:15 Le Cocorico Express'],
+      ['fr-evening', '19:50 Le Cocorico du Soir'],
+    ],
+  },
+  {
     title: '🪙 Crypto',
     items: [
       ['franc-gm', '07:55 Morning'],
@@ -49,16 +57,16 @@ const GROUPS: Group[] = [
   {
     title: '🌶️ Hot',
     items: [
-      ['hot-morning', '11:35 Hot matin'],
-      ['hot-midday', '15:15 Hot midi'],
-      ['hot-evening', '19:50 Hot soir'],
+      ['hot-morning', '10:10 Hot matin'],
+      ['hot-midday', '13:10 Hot midi'],
+      ['hot-evening', '20:10 Hot soir'],
     ],
   },
   {
     title: '🐓 General',
     items: [
       ['franc-gm-joke', '08:50 GM + blague'],
-      ['franc-did-you-know-1', '14:20 Did you know?'],
+      ['franc-did-you-know-1', '14:20 Cocorico Fact'],
       ['franc-gn', '22:30 GN'],
     ],
   },
