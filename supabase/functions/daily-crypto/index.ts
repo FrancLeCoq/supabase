@@ -650,22 +650,24 @@ async function sendWithBanner(token: string, chatId: number, imgUrl: string, tex
 
 // ── Bascule de langue PRÉ-ENREGISTRÉE (bouton 🇬🇧/🇫🇷 instantané) ──
 const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
-async function storeI18n(chatId: number, messageId: number, en: string, fr: string): Promise<void> {
+async function storeI18n(chatId: number, messageId: number, en: string, fr: string, html = false): Promise<void> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key || !messageId) return
   try {
     await tfetch(url + '/rest/v1/news_i18n', {
       method: 'POST',
       headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr }),
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, en, fr, html }),
     })
   } catch (e) { console.error('storeI18n', String(e)) }
 }
 // Poste dans la langue par défaut du groupe + bouton, et pré-enregistre les DEUX
-// versions pour la bascule instantanée. imgUrl='' -> message texte.
-async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string): Promise<void> {
+// versions pour la bascule instantanée. imgUrl='' -> message texte. html=true ->
+// parse_mode HTML (gras) + mémorisé pour que la bascule FR reste en gras.
+async function postI18n(token: string, chatId: number, threadId: number, imgUrl: string, defaultLang: 'en' | 'fr', en: string, fr: string, html = false): Promise<void> {
   const text = (defaultLang === 'fr') ? fr : en
   const base: any = { chat_id: chatId, disable_web_page_preview: true, reply_markup: NLANG_BTN }
+  if (html) base.parse_mode = 'HTML'
   if (threadId) base.message_thread_id = threadId
   let messageId = 0
   if (imgUrl) {
@@ -674,7 +676,7 @@ async function postI18n(token: string, chatId: number, threadId: number, imgUrl:
   if (!messageId) {
     try { const r = await tfetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, text }) }); const d = await r.json(); if (d && d.ok) messageId = Number(d.result?.message_id) || 0 } catch (e) { console.error('postI18n text', String(e)) }
   }
-  await storeI18n(chatId, messageId, en, fr)
+  await storeI18n(chatId, messageId, en, fr, html)
 }
 
 // -- Point d'entrée --------------------------------------------
