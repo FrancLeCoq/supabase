@@ -74,6 +74,54 @@ function extractNewsTitles(s: string): string[] {
   while ((m = re.exec(s || '')) && out.length < 2) out.push(m[1].trim())
   return out
 }
+function esc(s: string): string { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+
+// -- News format STRUCTURÉ (1 seule news, la plus percutante) ----------------
+// L'IA renvoie des MARQUEURS (jamais de HTML) → on génère EN et FR séparément
+// puis on habille en HTML (titre / thème / 🚨 accroche / 📌 section / puces / 🐓 signature).
+function racingNewsPrompt(sportLong: string, facts: string, lang: 'English' | 'French'): string {
+  return [
+    'You are Francis the rooster — a sharp but reliable ' + sportLong + ' reporter. Using ONLY the verified facts below, craft ONE clean, easy-to-read news item IN ' + lang.toUpperCase() + ' — the SINGLE most impactful story.',
+    'FACTS:', '---', facts, '---',
+    'Output EXACTLY these marker lines (nothing before or after, no title):',
+    'THEME: <emoji> <1 to 3 word category, e.g. Driver Market, Contract, Injury, Team News, Controversy>',
+    'HEAD: <ONE short, punchy headline sentence>',
+    'SUMMARY: <2 to 3 clear factual sentences on what happened>',
+    'BULLET: <emoji> <one key fact>',
+    'BULLET: <emoji> <one key fact>',
+    "INSIGHT: <1 to 2 sentences — Francis' level-headed takeaway, NO hype>",
+    'RULES:',
+    '- 2 to 3 BULLET lines, each starting with a relevant emoji.',
+    '- Base everything ONLY on the facts. NEVER invent names, teams, numbers or results.',
+    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, BULLET:, INSIGHT:. Write the values in ' + lang.toUpperCase() + '.',
+    '- If the facts are empty or NONE, output only: NONE',
+    'Output ONLY the marker lines.',
+  ].join(NL)
+}
+type RNews = { theme: string; head: string; summary: string; bullets: string[]; insight: string }
+function parseRacingNews(s: string): RNews {
+  const out: RNews = { theme: '', head: '', summary: '', bullets: [], insight: '' }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
+    else if (/^HEAD:/i.test(line)) out.head = line.replace(/^HEAD:/i, '').trim()
+    else if (/^SUMMARY:/i.test(line)) out.summary = line.replace(/^SUMMARY:/i, '').trim()
+    else if (/^BULLET:/i.test(line)) { const b = line.replace(/^BULLET:/i, '').trim(); if (b) out.bullets.push(b) }
+    else if (/^INSIGHT:/i.test(line)) out.insight = line.replace(/^INSIGHT:/i, '').trim()
+  }
+  return out
+}
+function buildRacingNews(sportShort: string, sportEmoji: string, lang: 'en' | 'fr', p: RNews): string {
+  const sec = lang === 'fr' ? 'En bref' : 'In Brief'
+  const sig = lang === 'fr' ? "L'essentiel de Francis" : "Francis' Key Takeaway"
+  const parts: string[] = ['<b>' + esc(sportEmoji + ' ' + sportShort + ' Paddock Buzz') + '</b>']
+  if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
+  if (p.head) parts.push('🚨 ' + esc(p.head))
+  if (p.summary) parts.push('', '<b>📌 ' + sec + '</b>', esc(p.summary))
+  if (p.bullets.length) parts.push('', ...p.bullets.map((b) => '• ' + esc(b)))
+  if (p.insight) parts.push('', '<b>🐓 ' + sig + '</b>', esc(p.insight))
+  return parts.join(NL)
+}
 // En-tête par rubrique. /we et /news ont un en-tête dédié ; le reste garde
 // « <emoji> <Sport> — <hook> ». (news = HTML, gras/italique dans l'en-tête.)
 function raceHeader(type: RType, lang: 'en' | 'fr', sportShort: string, sportEmoji: string): string {
@@ -142,7 +190,7 @@ function searchPrompt(sportLong: string, type: RType, covered: string[] = []): s
     sprint: 'Find the results of the most recent ' + sportLong + ' SPRINT race. Give the winner, the podium, and the finishing order (top positions with name + team), plus key highlights and incidents.',
     course: 'Find the results of the most recent ' + sportLong + ' main RACE (Grand Prix). Give the winner, the podium, and the finishing order (top positions with name + team), plus key highlights and incidents.',
     we: 'TWO things about ' + sportLong + '. (1) The NEXT upcoming race weekend: the Grand Prix name and circuit/location (city, country), and the FULL session schedule for each day (practice, qualifying, sprint if any, race) with their start times, converted to UTC. (2) The CURRENT ' + sportLong + ' World Drivers/Riders Championship standings AS OF TODAY: the FULL classification IN ORDER with, for EACH entry, the position, the driver/rider FULL name (first + last), their team/constructor NAME, and their points total. Label this section STANDINGS and keep every position.',
-    news: 'Find the freshest ' + sportLong + ' paddock news, rumours and gossip from the LAST 48 HOURS (driver/rider moves, contracts, team news, controversies, injuries). Juicy but factual.',
+    news: 'Find the SINGLE freshest and MOST IMPACTFUL ' + sportLong + ' paddock story from the LAST 48 HOURS (driver/rider move, contract, big team news, controversy, injury). Pick ONLY the one strongest story and report its verified facts: who, what, when, key numbers, why it matters.',
     constructeurs: 'Find the CURRENT ' + sportLong + " Constructors'/Manufacturers' Championship standings AS OF TODAY: the FULL classification IN ORDER with, for EACH constructor/team, the position, the constructor/team NAME, their points total, AND the names of that team's TWO regular race drivers/riders (for a manufacturer, its two leading works riders). Give each driver/rider as first-name INITIAL + last name. Label this STANDINGS and keep every position.",
   }
   let extra = ''
@@ -151,13 +199,13 @@ function searchPrompt(sportLong: string, type: RType, covered: string[] = []): s
   }
   return base + q[type] + extra
 }
-// Anti-redondance /news : on garde les 4 derniers titres/sujets par sport.
+// Anti-redondance /news : on garde les 10 derniers titres/sujets par sport.
 function racingNewsSlot(isF1: boolean): string { return isF1 ? 'racing_f1_news' : 'racing_gp_news' }
 async function fetchRecentRacingNews(isF1: boolean): Promise<string[]> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !key) return []
   try {
-    const res = await tfetch(url + '/rest/v1/daily_news_log?slot=eq.' + racingNewsSlot(isF1) + '&select=summary&order=created_at.desc&limit=4',
+    const res = await tfetch(url + '/rest/v1/daily_news_log?slot=eq.' + racingNewsSlot(isF1) + '&select=summary&order=created_at.desc&limit=10',
       { headers: { apikey: key, Authorization: 'Bearer ' + key } })
     if (!res.ok) return []
     const rows = await res.json()
@@ -394,11 +442,34 @@ async function runCommand(token: string, command: string): Promise<void> {
   // Classement constructeurs : flux dédié (PNG only + DM owner « Publier sur X »).
   if (type === 'constructeurs') { await runConstructors(token, isF1, sportShort, sportEmoji); return }
 
-  // /news : on récupère les 4 derniers sujets déjà postés pour éviter la redite.
+  // /news : on récupère les 10 derniers sujets déjà postés pour éviter la redite.
   const coveredNews = type === 'news' ? await fetchRecentRacingNews(isF1) : []
   const facts = await groundedSearch(searchPrompt(sportLong, type, coveredNews))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) {
     await dmOwner(token, '🏁 /' + command + ' : aucune info trouvee pour le moment (course pas encore courue ou pas de donnees). Reessaie plus tard.')
+    return
+  }
+
+  // /news : UNE seule news, format STRUCTURÉ (EN défaut + bouton 🇫🇷). Anti-redite 10.
+  if (type === 'news') {
+    const [enS, frS] = await Promise.all([
+      formatCall(racingNewsPrompt(sportLong, facts, 'English')),
+      formatCall(racingNewsPrompt(sportLong, facts, 'French')),
+    ])
+    const enP = parseRacingNews(enS)
+    const frP = parseRacingNews(frS)
+    if (!enP.head && !enP.summary && !frP.head && !frP.summary) {
+      await dmOwner(token, '🏁 /' + command + ' : mise en forme impossible (reessaie).')
+      return
+    }
+    const enData = (enP.head || enP.summary) ? enP : frP
+    const frData = (frP.head || frP.summary) ? frP : enP
+    const enMsg = buildRacingNews(sportShort, sportEmoji, 'en', enData)
+    const frMsg = buildRacingNews(sportShort, sportEmoji, 'fr', frData)
+    const idEn = await post(token, COOP_CHAT_ID, enMsg, racingThread(isF1), NLANG_BTN, true)
+    if (idEn) await storeI18n(COOP_CHAT_ID, idEn, enMsg, frMsg, true)
+    await dmOwnerCopy(token, stripTags(enMsg))
+    await logRacingNews(isF1, (enData.theme ? enData.theme + ' — ' : '') + enData.head)
     return
   }
 
