@@ -109,13 +109,14 @@ function parseRacingNews(s: string): RNews {
   }
   return out
 }
+// Libellés FIGÉS : 📌 In Brief / En bref · signature 🐓 Francis' Take / Le mot de Francis.
 function buildRacingNews(sportShort: string, sportEmoji: string, lang: 'en' | 'fr', p: RNews): string {
   const sec = lang === 'fr' ? 'En bref' : 'In Brief'
-  const sig = lang === 'fr' ? "L'essentiel de Francis" : "Francis' Key Takeaway"
+  const sig = lang === 'fr' ? 'Le mot de Francis' : "Francis' Take"
   const parts: string[] = ['<b>' + esc(sportEmoji + ' ' + sportShort + ' Paddock Buzz') + '</b>']
   if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
   if (p.head) parts.push('🚨 ' + esc(p.head))
-  if (p.summary) parts.push('', '📌 <b>' + sec + '</b> — ' + esc(p.summary))   // label inline, pas de puces
+  if (p.summary) parts.push('', '📌 <b>' + sec + '</b>', esc(p.summary))
   if (p.insight) parts.push('', '🐓 <b>' + sig + '</b>', esc(p.insight))
   return parts.join(NL)
 }

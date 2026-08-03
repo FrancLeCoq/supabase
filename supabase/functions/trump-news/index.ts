@@ -174,35 +174,69 @@ async function tgSend(method: string, body: any): Promise<boolean> {
   return await tgCall(method, body)
 }
 
-// Poste 1 tweet Trump : header + texte + média(s), dans (chat, thread).
-// `link` sert de filet : si un post n'a NI texte NI média récupéré (ex. post
-// image dont l'extraction a échoué), on met le lien source pour ne jamais
-// laisser un en-tête « 👇 » orphelin.
-async function postPost(chat: number, thread: number, header: string, text: string, media: string[], link = ''): Promise<boolean> {
-  const caption = (header + (text ? '\n\n' + esc(text) : '')).slice(0, 1024)
-  const longText = (header + (text ? '\n\n' + esc(text) : ''))
-  if (media.length === 0) {
-    const body = text ? longText : (header + (link ? '\n\n👉 ' + esc(link) : ''))
-    return await tgCall('sendMessage', { chat_id: chat, message_thread_id: thread, text: body, parse_mode: 'HTML', disable_web_page_preview: false })
+// Bouton de traduction FR pré-enregistré (bascule instantanée via nlang).
+const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
+// Envoie et renvoie le message_id (0 si échec), pour attacher le toggle i18n.
+async function tgGet(method: string, body: any): Promise<number> {
+  const token = Deno.env.get('BOT_TOKEN')
+  try {
+    const res = await tfetch('https://api.telegram.org/bot' + token + '/' + method, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!data || !data.ok) { console.error(method, JSON.stringify(data).slice(0, 200)); return 0 }
+    return Number(data.result && data.result.message_id) || 0
+  } catch (e) { console.error(method, 'ex', String(e)); return 0 }
+}
+async function tgGetRetry(method: string, body: any): Promise<number> {
+  const id = await tgGet(method, body); if (id) return id
+  await new Promise((r) => setTimeout(r, 1800))
+  return await tgGet(method, body)
+}
+// Mémorise EN + FR pour la bascule 🇬🇧/🇫🇷 (nlang lit {en, fr, html}).
+async function storeI18n(sb: any, chat: number, msgId: number, en: string, fr: string): Promise<void> {
+  if (!msgId) return
+  try { await sb.from('news_i18n').upsert({ chat_id: chat, message_id: msgId, en, fr, html: true }) } catch (e) { console.error('storeI18n', String(e)) }
+}
+
+// Poste 1 tweet Trump : header + texte + média(s), avec bouton « Translate in
+// French 🇫🇷 ». `link` = filet si un post n'a NI texte NI média (en-tête + lien
+// source, jamais de « 👇 » orphelin).
+async function postPost(sb: any, chat: number, thread: number, headerEn: string, headerFr: string, text: string, media: string[], link = ''): Promise<boolean> {
+  const tail = (h: string) => text ? (h + '\n\n' + esc(text)) : (media.length === 0 && link ? (h + '\n\n👉 ' + esc(link)) : h)
+  const enText = tail(headerEn)
+  let frBody = ''
+  if (text) { const t = await translateFR(text); frBody = t || text }   // repli : texte original
+  const frText = frBody ? (headerFr + '\n\n' + esc(frBody)) : (media.length === 0 && link ? (headerFr + '\n\n👉 ' + esc(link)) : headerFr)
+  const enCap = enText.slice(0, 1024)
+  const capTooLong = enText.length > 1024
+
+  // Message texte seul (bouton + i18n dessus).
+  const postTextMsg = async (preview: boolean): Promise<number> => {
+    const id = await tgGet('sendMessage', { chat_id: chat, message_thread_id: thread, text: enText, parse_mode: 'HTML', disable_web_page_preview: !preview, reply_markup: NLANG_BTN })
+    await storeI18n(sb, chat, id, enText, frText)
+    return id
   }
-  // Si le texte dépasse la limite de légende, on l'envoie d'abord en message.
-  const capTooLong = longText.length > 1024
-  if (capTooLong) await tgCall('sendMessage', { chat_id: chat, message_thread_id: thread, text: longText, parse_mode: 'HTML' })
-  const cap = capTooLong ? '' : caption
+
+  if (media.length === 0) return !!(await postTextMsg(true))
+
+  // 1 seul média, légende qui tient : bouton sur la légende (toggle = caption).
+  if (media.length === 1 && !capTooLong) {
+    const m = media[0]; const method = isVideo(m) ? 'sendVideo' : 'sendPhoto'; const key = isVideo(m) ? 'video' : 'photo'
+    const id = await tgGetRetry(method, { chat_id: chat, message_thread_id: thread, [key]: m, caption: enCap, parse_mode: 'HTML', reply_markup: NLANG_BTN })
+    if (id) { await storeI18n(sb, chat, id, enText, frText); return true }
+    return !!(await postTextMsg(false))   // média KO -> repli texte + bouton
+  }
+
+  // Album OU texte trop long : bouton sur un message TEXTE, médias sans légende.
+  const tid = await postTextMsg(false)
   if (media.length === 1) {
-    const m = media[0]
-    const method = isVideo(m) ? 'sendVideo' : 'sendPhoto'
-    const key = isVideo(m) ? 'video' : 'photo'
-    const body: any = { chat_id: chat, message_thread_id: thread, [key]: m }
-    if (cap) { body.caption = cap; body.parse_mode = 'HTML' }
-    return await tgSend(method, body)
+    const m = media[0]; const method = isVideo(m) ? 'sendVideo' : 'sendPhoto'; const key = isVideo(m) ? 'video' : 'photo'
+    await tgSend(method, { chat_id: chat, message_thread_id: thread, [key]: m })
+  } else {
+    await tgSend('sendMediaGroup', { chat_id: chat, message_thread_id: thread, media: media.map((m) => ({ type: isVideo(m) ? 'video' : 'photo', media: m })) })
   }
-  const arr = media.map((m, i) => {
-    const item: any = { type: isVideo(m) ? 'video' : 'photo', media: m }
-    if (i === 0 && cap) { item.caption = cap; item.parse_mode = 'HTML' }
-    return item
-  })
-  return await tgSend('sendMediaGroup', { chat_id: chat, message_thread_id: thread, media: arr })
+  return !!tid
 }
 
 // Récupère le post original le PLUS RÉCENT (sans filtre de fenêtre) — pour testOne.
@@ -274,7 +308,7 @@ Deno.serve(async (req: Request) => {
     const p = await latestOriginal()
     if (!p) return new Response(JSON.stringify({ error: 'aucun post original trouvé' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     const media = await fetchMedia(p.link)
-    const coopOk = await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media, p.link)
+    const coopOk = await postPost(supabase, COOP_CHAT, COOP_THREAD, headerEN(p.t), headerFR(p.t), p.text, media, p.link)
     // Poulailler supprimé : plus d'envoi FR.
     await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)   // évite un doublon par le cron
     return new Response(JSON.stringify({ oid: p.oid, mediaCount: media.length, coopOk, text: p.text.slice(0, 150) }, null, 2),
@@ -290,8 +324,8 @@ Deno.serve(async (req: Request) => {
         const first = await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)
         if (!first) continue
         const media = await fetchMedia(p.link)
-        // EN -> The Chicken Coop (Poulailler supprimé : plus d'envoi FR).
-        await postPost(COOP_CHAT, COOP_THREAD, headerEN(p.t), p.text, media, p.link)
+        // EN par défaut + bouton 🇫🇷 -> The Chicken Coop.
+        await postPost(supabase, COOP_CHAT, COOP_THREAD, headerEN(p.t), headerFR(p.t), p.text, media, p.link)
         console.log('trump-news poste', p.oid, 'media', media.length, p.text.slice(0, 60))
       }
     } catch (e) { console.error('trump-news bg ex:', String(e)) }

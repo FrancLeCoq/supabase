@@ -59,6 +59,11 @@ const SLOT_HOOK: Record<Slot, string> = {
   midday: '🌞 Crypto Midday:',
   evening: '🌆 Crypto Evening:',
 }
+const SLOT_HOOK_FR: Record<Slot, string> = {
+  morning: '⏰ Crypto Matin',
+  midday: '🌞 Crypto Midi',
+  evening: '🌆 Crypto Soir',
+}
 
 // -- Réseau ----------------------------------------------------
 async function tfetch(input: string, init: RequestInit = {}, ms = 10000): Promise<Response> {
@@ -252,39 +257,66 @@ function searchPromptNews(coveredToday: string[]): string {
   ].join(NL)
 }
 
-function formatPromptNews(facts: string): string {
+// Format structuré (comme World Roost) : marqueurs → HTML. EN + FR indépendants.
+function cryptoNewsPrompt(facts: string, lang: 'English' | 'French'): string {
   return [
-    'You are Francis the rooster, mascot of the $FRANC community memecoin.',
-    'Below are VERIFIED FACTS about today top crypto story (already researched):',
-    '---',
-    facts,
-    '---',
-    'Write the final Telegram message summarizing and vulgarizing it IN ENGLISH so anyone understands - clear, simple, no jargon.',
-    '',
-    'FORMAT - TWO blocks separated by ONE BLANK LINE:',
-    '(1) a SHORT, punchy headline sentence (one line);',
-    '(2) a blank line, then ONE or TWO sentences that explain it simply.',
-    '',
-    'HARD RULES:',
-    '- 260 CHARACTERS MAXIMUM (a short channel title is prepended automatically, so leave room).',
-    '- Do NOT write any title, hook, label or prefix. Begin directly with the headline sentence.',
-    '- Base it ONLY on the facts above. NEVER invent details, numbers, names or outcomes.',
-    '- Stay 100% factual and NEUTRAL. NO financial advice, no price predictions, never say "moon/pump/buy/sell".',
-    '- Do not mention $FRANC unless the facts genuinely do. At most ONE emoji.',
-    '- If the facts say NONE or are empty, reply with exactly: NONE',
-    '',
-    'Output ONLY the final English message (or NONE), nothing else.',
+    'You are Francis the rooster — a sharp but reliable crypto news anchor. Using ONLY the verified facts below, craft ONE clean, easy-to-read crypto news item IN ' + lang.toUpperCase() + '.',
+    'FACTS:', '---', facts, '---',
+    'Output EXACTLY these marker lines (nothing before or after, no title):',
+    'THEME: <emoji> <1 to 3 word category, e.g. Regulation, ETFs, Bitcoin, Security, Adoption>',
+    'HEAD: <ONE short, punchy headline sentence>',
+    'SUMMARY: <exactly 1 to 2 SHORT factual sentences — the essential only. Keep it light and easy to read>',
+    "INSIGHT: <1 to 2 SHORT sentences — Francis' level-headed takeaway. NO hype, NO 'moon/pump/buy/sell', NO financial advice>",
+    'RULES:',
+    '- NO bullet points. 100% factual and neutral.',
+    '- Base everything ONLY on the facts. NEVER invent numbers, names or outcomes.',
+    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, INSIGHT:. Write the values in ' + lang.toUpperCase() + '.',
+    '- If the facts are empty or NONE, output only: NONE',
+    'Output ONLY the marker lines.',
   ].join(NL)
 }
+type CNews = { theme: string; head: string; summary: string; insight: string }
+function parseCryptoNews(s: string): CNews {
+  const out: CNews = { theme: '', head: '', summary: '', insight: '' }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
+    else if (/^HEAD:/i.test(line)) out.head = line.replace(/^HEAD:/i, '').trim()
+    else if (/^SUMMARY:/i.test(line)) out.summary = line.replace(/^SUMMARY:/i, '').trim()
+    else if (/^INSIGHT:/i.test(line)) out.insight = line.replace(/^INSIGHT:/i, '').trim()
+  }
+  return out
+}
+// Libellés FIGÉS : 📌 In Brief / En bref · signature 🐓 Francis' Take / Le mot de Francis.
+function buildCryptoNews(title: string, lang: 'en' | 'fr', p: CNews): string {
+  const sec = lang === 'fr' ? 'En bref' : 'In Brief'
+  const sig = lang === 'fr' ? 'Le mot de Francis' : "Francis' Take"
+  const parts: string[] = ['<b>' + esc(title) + '</b>']
+  if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
+  if (p.head) parts.push('🚨 ' + esc(p.head))
+  if (p.summary) parts.push('', '📌 <b>' + sec + '</b>', esc(p.summary))
+  if (p.insight) parts.push('', '🐓 <b>' + sig + '</b>', esc(p.insight))
+  return parts.join(NL)
+}
 
-async function generateNews(slot: Slot): Promise<{ ok: boolean; text: string; reason: string }> {
+async function generateNews(slot: Slot): Promise<{ ok: boolean; en: string; fr: string; logText: string; reason: string }> {
   const coveredToday = await fetchTodayTopics(36)   // anti-doublon sur 36h glissantes
   const facts = await groundedSearch(searchPromptNews(coveredToday))
-  if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, text: '', reason: 'étape A: pas d actu (facts=' + facts.slice(0, 60) + ')' }
-  const msg = await formatCall(formatPromptNews(facts))
-  if (!msg) return { ok: false, text: '', reason: 'étape B: mise en forme vide' }
-  if (msg.toUpperCase().indexOf('NONE') === 0) return { ok: false, text: '', reason: 'étape B: NONE' }
-  return { ok: true, text: SLOT_HOOK[slot] + NL + NL + splitAccroche(msg), reason: '' }
+  if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, en: '', fr: '', logText: '', reason: 'étape A: pas d actu (facts=' + facts.slice(0, 60) + ')' }
+  const [enS, frS] = await Promise.all([
+    formatCall(cryptoNewsPrompt(facts, 'English')),
+    formatCall(cryptoNewsPrompt(facts, 'French')),
+  ])
+  const enP = parseCryptoNews(enS)
+  const frP = parseCryptoNews(frS)
+  if (!enP.head && !enP.summary && !frP.head && !frP.summary) return { ok: false, en: '', fr: '', logText: '', reason: 'étape B: structure vide' }
+  const enData = (enP.head || enP.summary) ? enP : frP
+  const frData = (frP.head || frP.summary) ? frP : enP
+  const stripColon = (x: string) => x.replace(/\s*:\s*$/, '')
+  const en = buildCryptoNews(stripColon(SLOT_HOOK[slot]), 'en', enData)
+  const fr = buildCryptoNews(SLOT_HOOK_FR[slot], 'fr', frData)
+  const logText = (enData.theme ? enData.theme + ' — ' : '') + enData.head
+  return { ok: true, en, fr, logText, reason: '' }
 }
 
 // == CRYPTO EVENING (laius marches + crypto, puis % en direct) ==
@@ -683,17 +715,10 @@ Deno.serve(async (req: Request) => {
     try {
       const result: any = await gen()
       if (!result.ok) { console.error('daily-crypto[' + kind + '] échec:', result.reason); return }
-      // evening / night = format STRUCTURÉ HTML (EN+FR déjà construits) ; morning /
-      // midday = actu simple (texte EN puis traduction FR).
-      const structured = kind === 'evening' || kind === 'night'
-      let en = '', frText = ''
-      if (structured) {
-        en = result.en; frText = result.fr
-      } else {
-        en = result.text
-        const fr = await translateToFrench(en)
-        frText = translationLooksValid(en, fr) ? fr : en
-      }
+      // Toutes les rubriques (morning / midday / evening / night) = format
+      // STRUCTURÉ HTML (EN + FR déjà construits, jamais de balise traduite).
+      const structured = true
+      const en = result.en, frText = result.fr
       // Mode "ownerOnly" : uniquement la copie owner (pour X), AUCUN post groupe.
       if (ownerOnly) { await dmOwnerCopy(botToken, stripTags(en)); console.log('daily-crypto[' + kind + '] ownerOnly envoyé'); return }
       const imgUrl = imageUrlFor(kind)

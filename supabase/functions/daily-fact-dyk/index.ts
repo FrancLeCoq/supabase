@@ -58,13 +58,22 @@ function buildFactPrompt(): string {
   const cat = pick(FACT_CATEGORIES)
   return COCORICO_FACT_PROMPT + NL + NL +
     "TODAY'S CATEGORY (rotate — feel fresh, do NOT repeat yesterday): " + cat.theme + NL + NL +
-    'Write ONLY the lore body IN ENGLISH (no title, no market cap — those are added automatically), with this EXACT layout:' + NL +
-    '- Line 1: "' + cat.emoji + '" then a space then ONE short, punchy opening fact sentence.' + NL +
-    '- A blank line.' + NL +
-    '- Then 1 to 3 SHORT paragraphs (1–2 sentences each) that tell the story/lore, separated by blank lines. Keep it flowing and easy to read.' + NL +
-    '- A blank line.' + NL +
-    '- A final line starting with "🎮 " — a short, punchy call to action that ties it to Francis / the $FRANC universe (play, compete, build your legacy — free, inside Telegram).' + NL +
-    'Output ONLY that lore body, nothing else. Around 400–600 characters total.'
+    'Output ONLY these marker lines IN ENGLISH (nothing before or after, no title, no market cap — those are added automatically):' + NL +
+    'THEME: ' + cat.emoji + ' <1 to 3 word category, e.g. French History, Rooster Culture, Gaming, Crypto, Tech>' + NL +
+    'HOOK: <ONE short, punchy fact/opening sentence>' + NL +
+    'STORY: <exactly 1 to 2 SHORT sentences of lore that end by tying naturally into Francis / the $FRANC universe (play free inside Telegram, build your legacy)>' + NL +
+    'RULES: keep it short and dynamic. Keep the markers EXACTLY: THEME:, HOOK:, STORY:. NO bullet points.'
+}
+type FactData = { theme: string; hook: string; story: string }
+function parseFact(s: string): FactData {
+  const out: FactData = { theme: '', hook: '', story: '' }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
+    else if (/^HOOK:/i.test(line)) out.hook = line.replace(/^HOOK:/i, '').trim()
+    else if (/^STORY:/i.test(line)) out.story = line.replace(/^STORY:/i, '').trim()
+  }
+  return out
 }
 
 // -- Reseau ----------------------------------------------------
@@ -137,9 +146,23 @@ function dailyFrancBlock(lang: 'en' | 'fr', d: { ton: number; sol: number; tonPc
     closing,
   ].join(NL)
 }
-// Assemble le post final : en-tête + lore (esc HTML) + bloc Daily $FRANC.
-function buildCocoricoFact(lang: 'en' | 'fr', lore: string, d: { ton: number; sol: number; tonPct: number | null; solPct: number | null }): string {
-  return '🐓 <b>Cocorico Fact</b>' + NL + NL + esc((lore || '').trim()) + NL + NL + dailyFrancBlock(lang, d)
+// Assemble le post final : en-tête court/dynamique (thème + accroche + 📌 histoire)
+// + bloc Daily $FRANC. Libellés figés comme les autres rubriques.
+function buildCocoricoFact(lang: 'en' | 'fr', p: { theme: string; hook: string; story: string }, d: { ton: number; sol: number; tonPct: number | null; solPct: number | null }): string {
+  const storyLabel = lang === 'fr' ? "L'histoire" : 'The Story'
+  const parts: string[] = ['🐓 <b>Cocorico Fact</b>']
+  if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
+  if (p.hook) parts.push(esc(p.hook))
+  if (p.story) parts.push('', '📌 <b>' + storyLabel + '</b>', esc(p.story))
+  parts.push('', dailyFrancBlock(lang, d))
+  return parts.join(NL)
+}
+// Traduit N champs courts en un seul appel (séparateur non traduisible).
+async function translateFields(fields: string[]): Promise<string[]> {
+  const SEP = ' @@@ '
+  const out = await translateToFrench(fields.join(SEP))
+  const parts = out.split('@@@').map((s) => s.trim())
+  return parts.length === fields.length ? parts : fields   // repli EN si découpe ratée
 }
 
 async function generateFact(): Promise<{ ok: boolean; text: string; reason: string }> {
@@ -317,17 +340,18 @@ Deno.serve(async (req: Request) => {
     try {
       const result = await generateFact()
       if (!result.ok) { console.error('daily-fact-dyk echec:', result.reason); return }
-      const loreEn = result.text
-      const loreFrRaw = await translateToFrench(loreEn)
-      const loreFr = translationLooksValid(loreEn, loreFrRaw) ? loreFrRaw : loreEn   // repli cohérent (EN)
+      const enData = parseFact(result.text)
+      if (!enData.hook && !enData.story) { console.error('daily-fact-dyk: structure vide', result.text.slice(0, 80)); return }
+      const [ftheme, fhook, fstory] = await translateFields([enData.theme, enData.hook, enData.story])
+      const frData = { theme: ftheme, hook: fhook, story: fstory }
       const d = await francDaily()                                    // MC $FRANC TON+SOL (+ % si snapshot)
-      const en = buildCocoricoFact('en', loreEn, d)
-      const fr = buildCocoricoFact('fr', loreFr, d)
+      const en = buildCocoricoFact('en', enData, d)
+      const fr = buildCocoricoFact('fr', frData, d)
       const img = imageUrl()
       await postI18n(botToken, chatId, img, 'en', en, fr, true)        // EN (défaut) -> The Chicken Coop, General (bouton 🇬🇧/🇫🇷), HTML
       await dmOwnerCopy(botToken, stripTags(en))                       // copie EN -> owner (pour X, sans lien)
       await markSent('franc-did-you-know-1')
-      console.log('daily-fact-dyk poste (Cocorico Fact):', loreEn.slice(0, 80))
+      console.log('daily-fact-dyk poste (Cocorico Fact):', (enData.hook || '').slice(0, 80))
     } catch (e) { console.error('daily-fact-dyk bg exception:', String(e)) }
   })()
   ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)

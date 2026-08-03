@@ -227,18 +227,6 @@ function searchPromptWorld(def: WDef, covered: string[]): string {
   ].join(NL)
 }
 
-// ── Identité par rubrique : section (📌) + signature (🐓), EN + FR ──
-type NewsId = { secEn: string; secFr: string; sigEn: string; sigFr: string }
-const NEWS_ID: Record<string, NewsId> = {
-  wr_morning: { secEn: 'Global Snapshot', secFr: 'Aperçu mondial', sigEn: "Francis' Global Brief", sigFr: 'Le brief mondial de Francis' },
-  wr_eco:     { secEn: 'Market Snapshot', secFr: 'Aperçu du marché', sigEn: "Francis' Market Insight", sigFr: "L'éclairage marché de Francis" },
-  wr_midday:  { secEn: 'Global Snapshot', secFr: 'Aperçu mondial', sigEn: "Francis' Global Brief", sigFr: 'Le brief mondial de Francis' },
-  wr_tech:    { secEn: 'What Happened', secFr: "Ce qui s'est passé", sigEn: "Francis' Tech Insight", sigFr: "L'éclairage tech de Francis" },
-  wr_evening: { secEn: 'In Brief', secFr: 'En bref', sigEn: "Francis' Global Insight", sigFr: "L'éclairage mondial de Francis" },
-  fr_morning: { secEn: 'France in Brief', secFr: 'La France en bref', sigEn: "Francis' France Brief", sigFr: 'Le brief France de Francis' },
-  fr_eu:      { secEn: 'Europe in Brief', secFr: "L'Europe en bref", sigEn: "Francis' Europe Brief", sigFr: 'Le brief Europe de Francis' },
-  fr_evening: { secEn: 'France in Brief', secFr: 'La France en bref', sigEn: "Francis' France Brief", sigFr: 'Le brief France de Francis' },
-}
 function stripColon(s: string): string { return s.replace(/\s*:\s*$/, '') }
 
 // Prompt structuré : l'IA renvoie des MARQUEURS (jamais de balises HTML), on
@@ -274,21 +262,21 @@ function parseNewsBlock(s: string): NewsData {
   }
   return out
 }
-function buildNewsBlock(title: string, cfg: NewsId, lang: 'en' | 'fr', p: NewsData): string {
-  const sec = lang === 'fr' ? 'En bref' : 'In Brief'   // libellé 📌 générique, léger
-  const sig = lang === 'fr' ? cfg.sigFr : cfg.sigEn
+// Libellés FIGÉS : 📌 In Brief / En bref · signature 🐓 Francis' Take / Le mot de Francis.
+function buildNewsBlock(title: string, lang: 'en' | 'fr', p: NewsData): string {
+  const sec = lang === 'fr' ? 'En bref' : 'In Brief'
+  const sig = lang === 'fr' ? 'Le mot de Francis' : "Francis' Take"
   const parts: string[] = ['<b>' + esc(title) + '</b>']
   if (p.theme) parts.push('', '<b>' + esc(p.theme) + '</b>')
   if (p.head) parts.push('🚨 ' + esc(p.head))
-  if (p.summary) parts.push('', '📌 <b>' + sec + '</b> — ' + esc(p.summary))   // label inline, pas de puces
-  if (p.insight) parts.push('', '🐓 <b>' + esc(sig) + '</b>', esc(p.insight))
+  if (p.summary) parts.push('', '📌 <b>' + sec + '</b>', esc(p.summary))
+  if (p.insight) parts.push('', '🐓 <b>' + sig + '</b>', esc(p.insight))
   return parts.join(NL)
 }
 
 // Générateur commun (World Roost + French Coop) : facts groundés, puis EN + FR
 // structurés indépendamment (balises jamais traduites).
 async function genNews(slot: string, def: WDef, slotLike: string): Promise<{ ok: boolean; en: string; fr: string; logText: string; reason: string }> {
-  const cfg = NEWS_ID[slot] || NEWS_ID.wr_morning
   const covered = await fetchTodayWorldTopics(36, slotLike)
   const facts = await groundedSearch(searchPromptWorld(def, covered))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, en: '', fr: '', logText: '', reason: 'etape A: pas d actu' }
@@ -301,8 +289,8 @@ async function genNews(slot: string, def: WDef, slotLike: string): Promise<{ ok:
   if (!enP.head && !enP.summary && !frP.head && !frP.summary) return { ok: false, en: '', fr: '', logText: '', reason: 'etape B: structure vide' }
   const enData = (enP.head || enP.summary) ? enP : frP
   const frData = (frP.head || frP.summary) ? frP : enP
-  const en = buildNewsBlock(stripColon(def.hookEn), cfg, 'en', enData)
-  const fr = buildNewsBlock(stripColon(def.hookFr), cfg, 'fr', frData)
+  const en = buildNewsBlock(stripColon(def.hookEn), 'en', enData)
+  const fr = buildNewsBlock(stripColon(def.hookFr), 'fr', frData)
   const logText = (enData.theme ? enData.theme + ' — ' : '') + enData.head
   return { ok: true, en, fr, logText, reason: '' }
 }
