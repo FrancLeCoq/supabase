@@ -69,9 +69,9 @@ function parseFact(s: string): FactData {
   const out: FactData = { theme: '', hook: '', story: '' }
   for (const raw of (s || '').split(NL)) {
     const line = raw.trim()
-    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
-    else if (/^HOOK:/i.test(line)) out.hook = line.replace(/^HOOK:/i, '').trim()
-    else if (/^STORY:/i.test(line)) out.story = line.replace(/^STORY:/i, '').trim()
+    if (/^THEME\s*:/i.test(line)) out.theme = line.replace(/^THEME\s*:/i, '').trim()
+    else if (/^HOOK\s*:/i.test(line)) out.hook = line.replace(/^HOOK\s*:/i, '').trim()
+    else if (/^STORY\s*:/i.test(line)) out.story = line.replace(/^STORY\s*:/i, '').trim()
   }
   return out
 }

@@ -285,10 +285,10 @@ function parseCryptoNews(s: string): CNews {
   const out: CNews = { theme: '', head: '', summary: '', insight: '' }
   for (const raw of (s || '').split(NL)) {
     const line = raw.trim()
-    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
-    else if (/^HEAD:/i.test(line)) out.head = line.replace(/^HEAD:/i, '').trim()
-    else if (/^SUMMARY:/i.test(line)) out.summary = line.replace(/^SUMMARY:/i, '').trim()
-    else if (/^INSIGHT:/i.test(line)) out.insight = line.replace(/^INSIGHT:/i, '').trim()
+    if (/^THEME\s*:/i.test(line)) out.theme = line.replace(/^THEME\s*:/i, '').trim()
+    else if (/^HEAD\s*:/i.test(line)) out.head = line.replace(/^HEAD\s*:/i, '').trim()
+    else if (/^SUMMARY\s*:/i.test(line)) out.summary = line.replace(/^SUMMARY\s*:/i, '').trim()
+    else if (/^INSIGHT\s*:/i.test(line)) out.insight = line.replace(/^INSIGHT\s*:/i, '').trim()
   }
   return out
 }
@@ -513,10 +513,10 @@ function parseNight(s: string): NightData {
   const out: NightData = { sentiment: '', mood: '', sections: [] }
   for (const raw of (s || '').split(NL)) {
     const line = raw.trim()
-    if (/^SENTIMENT:/i.test(line)) out.sentiment = line.replace(/^SENTIMENT:/i, '').trim()
-    else if (/^MOOD:/i.test(line)) out.mood = line.replace(/^MOOD:/i, '').trim()
-    else if (/^SECTION:/i.test(line)) {
-      const segs = line.replace(/^SECTION:/i, '').split('::').map((x) => x.trim()).filter(Boolean)
+    if (/^SENTIMENT\s*:/i.test(line)) out.sentiment = line.replace(/^SENTIMENT\s*:/i, '').trim()
+    else if (/^MOOD\s*:/i.test(line)) out.mood = line.replace(/^MOOD\s*:/i, '').trim()
+    else if (/^SECTION\s*:/i.test(line)) {
+      const segs = line.replace(/^SECTION\s*:/i, '').split('::').map((x) => x.trim()).filter(Boolean)
       if (!segs.length) continue
       const head = segs[0]; const sp = head.indexOf(' ')
       const emoji = sp > 0 ? head.slice(0, sp) : '•'
@@ -577,17 +577,20 @@ function translationLooksValid(src: string, out: string): boolean {
 // PREMIÈRE sortie réellement traduite ; à défaut, la meilleure disponible.
 async function translateReliable(prompt: string, src: string, temperature = 0.3): Promise<string> {
   let best = ''
-  for (const model of FORMAT_MODELS) {
-    try {
-      const res = await tfetch(geminiUrl(model), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
-      }, 25000)
-      if (!res.ok) continue
-      const out = extractText(await res.json())
-      if (out && out.length > best.length) best = out
-      if (translationLooksValid(src, out)) return out
-    } catch (e) { console.error('translateReliable', model, String(e)) }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of FORMAT_MODELS) {
+      try {
+        const res = await tfetch(geminiUrl(model), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
+        }, 25000)
+        if (!res.ok) continue
+        const out = extractText(await res.json())
+        if (out && out.length > best.length) best = out
+        if (translationLooksValid(src, out)) return out
+      } catch (e) { console.error('translateReliable', model, String(e)) }
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 7000))
   }
   return best
 }

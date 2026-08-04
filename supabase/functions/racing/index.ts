@@ -101,11 +101,11 @@ function parseRacingNews(s: string): RNews {
   const out: RNews = { theme: '', head: '', summary: '', bullets: [], insight: '' }
   for (const raw of (s || '').split(NL)) {
     const line = raw.trim()
-    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
-    else if (/^HEAD:/i.test(line)) out.head = line.replace(/^HEAD:/i, '').trim()
-    else if (/^SUMMARY:/i.test(line)) out.summary = line.replace(/^SUMMARY:/i, '').trim()
-    else if (/^BULLET:/i.test(line)) { const b = line.replace(/^BULLET:/i, '').trim(); if (b) out.bullets.push(b) }
-    else if (/^INSIGHT:/i.test(line)) out.insight = line.replace(/^INSIGHT:/i, '').trim()
+    if (/^THEME\s*:/i.test(line)) out.theme = line.replace(/^THEME\s*:/i, '').trim()
+    else if (/^HEAD\s*:/i.test(line)) out.head = line.replace(/^HEAD\s*:/i, '').trim()
+    else if (/^SUMMARY\s*:/i.test(line)) out.summary = line.replace(/^SUMMARY\s*:/i, '').trim()
+    else if (/^BULLET\s*:/i.test(line)) { const b = line.replace(/^BULLET\s*:/i, '').trim(); if (b) out.bullets.push(b) }
+    else if (/^INSIGHT\s*:/i.test(line)) out.insight = line.replace(/^INSIGHT\s*:/i, '').trim()
   }
   return out
 }

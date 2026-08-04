@@ -86,7 +86,7 @@ const WORLD: Record<WSlot, WDef> = {
   wr_evening: {
     hookFr: '🌍 Le Monde ce Soir :',
     hookEn: '🌍 The World Tonight:',
-    directive: "Recherche l'actualité INTERNATIONALE majeure des 12 dernières heures. Sélectionne UNIQUEMENT l'événement ayant le plus fort impact potentiel mondial.",
+    directive: "Recherche l'actualité INTERNATIONALE la plus FRAÎCHE de cette FIN DE JOURNÉE (dernières 6 à 8 heures) : le développement marquant le plus récent, à fort impact mondial. Prends la meilleure actu du moment, même si le sujet est lié à un événement plus large déjà connu (donne l'angle le plus récent).",
   },
 }
 // "L'actu du Jour en Bref" (ex-"Bilan Info du Soir") : le hook EST la 1re ligne du message.
@@ -258,11 +258,11 @@ function parseNewsBlock(s: string): NewsData {
   const out: NewsData = { theme: '', head: '', summary: '', bullets: [], insight: '' }
   for (const raw of (s || '').split(NL)) {
     const line = raw.trim()
-    if (/^THEME:/i.test(line)) out.theme = line.replace(/^THEME:/i, '').trim()
-    else if (/^HEAD:/i.test(line)) out.head = line.replace(/^HEAD:/i, '').trim()
-    else if (/^SUMMARY:/i.test(line)) out.summary = line.replace(/^SUMMARY:/i, '').trim()
-    else if (/^BULLET:/i.test(line)) { const b = line.replace(/^BULLET:/i, '').trim(); if (b) out.bullets.push(b) }
-    else if (/^INSIGHT:/i.test(line)) out.insight = line.replace(/^INSIGHT:/i, '').trim()
+    if (/^THEME\s*:/i.test(line)) out.theme = line.replace(/^THEME\s*:/i, '').trim()
+    else if (/^HEAD\s*:/i.test(line)) out.head = line.replace(/^HEAD\s*:/i, '').trim()
+    else if (/^SUMMARY\s*:/i.test(line)) out.summary = line.replace(/^SUMMARY\s*:/i, '').trim()
+    else if (/^BULLET\s*:/i.test(line)) { const b = line.replace(/^BULLET\s*:/i, '').trim(); if (b) out.bullets.push(b) }
+    else if (/^INSIGHT\s*:/i.test(line)) out.insight = line.replace(/^INSIGHT\s*:/i, '').trim()
   }
   return out
 }
@@ -281,7 +281,10 @@ function buildNewsBlock(title: string, lang: 'en' | 'fr', p: NewsData): string {
 // Générateur commun (World Roost + French Coop) : facts groundés, puis EN + FR
 // structurés indépendamment (balises jamais traduites).
 async function genNews(slot: string, def: WDef, slotLike: string): Promise<{ ok: boolean; en: string; fr: string; logText: string; reason: string }> {
-  const covered = await fetchTodayWorldTopics(36, slotLike)
+  // Le Monde ce Soir = actu de FIN DE JOURNÉE : dédup court (6h) pour ne pas
+  // s'auto-bloquer sur les rubriques du jour et se retrouver sans actu (❌).
+  const dedupHours = slot === 'wr_evening' ? 6 : 36
+  const covered = await fetchTodayWorldTopics(dedupHours, slotLike)
   const facts = await groundedSearch(searchPromptWorld(def, covered))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, en: '', fr: '', logText: '', reason: 'etape A: pas d actu' }
   const enS = await formatCall(newsBlockPrompt(facts, 'English'))   // séquentiel (évite les 429 en rafale)
@@ -335,10 +338,10 @@ function parseReview(s: string): ReviewData {
   const out: ReviewData = { big: '', briefs: [], impact: '', tomorrow: '' }
   for (const raw of (s || '').split(NL)) {
     const line = raw.trim()
-    if (/^BIG:/i.test(line)) out.big = line.replace(/^BIG:/i, '').trim()
-    else if (/^BRIEF:/i.test(line)) out.briefs = line.replace(/^BRIEF:/i, '').split('|').map((x) => x.trim()).filter(Boolean)
-    else if (/^IMPACT:/i.test(line)) out.impact = line.replace(/^IMPACT:/i, '').trim()
-    else if (/^TOMORROW:/i.test(line)) out.tomorrow = line.replace(/^TOMORROW:/i, '').trim()
+    if (/^BIG\s*:/i.test(line)) out.big = line.replace(/^BIG\s*:/i, '').trim()
+    else if (/^BRIEF\s*:/i.test(line)) out.briefs = line.replace(/^BRIEF\s*:/i, '').split('|').map((x) => x.trim()).filter(Boolean)
+    else if (/^IMPACT\s*:/i.test(line)) out.impact = line.replace(/^IMPACT\s*:/i, '').trim()
+    else if (/^TOMORROW\s*:/i.test(line)) out.tomorrow = line.replace(/^TOMORROW\s*:/i, '').trim()
   }
   return out
 }
