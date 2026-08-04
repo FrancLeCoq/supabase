@@ -63,6 +63,12 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: '🇺🇸 Trump',
+    items: [
+      ['trump-morning-brief', '06:05 Morning Brief'],
+    ],
+  },
+  {
     title: '🐓 General',
     items: [
       ['franc-gm-joke', '08:50 GM + blague'],

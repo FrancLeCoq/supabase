@@ -1719,17 +1719,17 @@ Deno.serve(async (req) => {
         `🌶️ <b>Hot Wings</b>\n\n` +
         `The spiciest corner of the coop: the must-read headlines from the adult-entertainment industry — new releases, performers, launches, awards and big moves. Playful and flirty, always tasteful. 🔥\n\n` +
         `🕒 <b>Posted every day (Paris time):</b>\n` +
-        `👉 11:35 — Hot morning\n` +
-        `👉 15:15 — Hot midday\n` +
-        `👉 19:50 — Hot evening`,
+        `👉 10:10 — Hot morning\n` +
+        `👉 13:10 — Hot midday\n` +
+        `👉 20:10 — Hot evening`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       ,
         `🌶️ <b>Hot Wings</b>\n\n` +
         `Le coin le plus épicé du groupe : l'actu à ne pas manquer de l'industrie du divertissement pour adultes — sorties, stars, lancements, récompenses et gros mouvements. Taquin et coquin, toujours avec classe. 🔥\n\n` +
         `🕒 <b>Diffusion chaque jour (heure de Paris) :</b>\n` +
-        `👉 11:35 — Hot du matin\n` +
-        `👉 15:15 — Hot du midi\n` +
-        `👉 19:50 — Hot du soir`,
+        `👉 10:10 — Hot du matin\n` +
+        `👉 13:10 — Hot du midi\n` +
+        `👉 20:10 — Hot du soir`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )
       await sendMessage(token, chatId, tr('✅ Hot Wings publié et épinglé dans les deux groupes.', '✅ Hot Wings posted and pinned in both groups.'))
@@ -1748,6 +1748,8 @@ Deno.serve(async (req) => {
         `💰 Trump wanted to charge up to <b>$100,000/month</b> for early access to his posts.\n` +
         `We rebuilt it ourselves — and here it's <b>100% FREE</b>.\n` +
         `<b>That's the spirit of the coop.</b> 🐔\n\n` +
+        `🕒 <b>Plus, every morning (Paris time):</b>\n` +
+        `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — the last 24h summed up & pinned\n\n` +
         `<i>Reposts (RT) are skipped — only his own original posts.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       ,
@@ -1756,6 +1758,8 @@ Deno.serve(async (req) => {
         `💰 Trump voulait faire payer jusqu'à <b>100 000 $/mois</b> pour accéder en primeur à ses posts.\n` +
         `Nous l'avons recréé nous-mêmes — et ici, c'est <b>100% GRATUIT</b>.\n` +
         `<b>C'est ça, l'esprit de la basse-cour.</b> 🐔\n\n` +
+        `🕒 <b>Et chaque matin (heure de Paris) :</b>\n` +
+        `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — les dernières 24h résumées & épinglées\n\n` +
         `<i>Les reposts (RT) sont ignorés — uniquement ses posts originaux.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )

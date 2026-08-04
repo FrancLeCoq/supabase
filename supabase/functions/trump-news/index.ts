@@ -261,13 +261,13 @@ async function latestOriginal(): Promise<TPost | null> {
 
 interface TPost { link: string; oid: string; text: string; t: number }
 
-async function collectFresh(): Promise<{ posts: TPost[]; reason: string }> {
+async function collectFresh(windowMin = WINDOW_MIN): Promise<{ posts: TPost[]; reason: string }> {
   const res = await tfetch(FEED, { headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml' } })
   if (!res.ok) return { posts: [], reason: 'feed HTTP ' + res.status }
   const xml = await res.text()
   const raw = xml.split('<item>').slice(1).map((s) => s.split('</item>')[0])
   const now = Date.now()
-  const WINDOW = WINDOW_MIN * 60 * 1000
+  const WINDOW = windowMin * 60 * 1000
   const isRepost = (d: string) => /RT:\s*https?:\/\//i.test(d) || d.indexOf('quote-inline') >= 0
   const posts: TPost[] = []
   for (const it of raw) {
@@ -285,6 +285,93 @@ async function collectFresh(): Promise<{ posts: TPost[]; reason: string }> {
   return { posts, reason: posts.length ? '' : 'aucun post récent' }
 }
 
+// ── Trump Morning Brief (6h05) : résumé des posts des dernières 24h, épinglé ──
+async function geminiGen(prompt: string, temperature = 0.4): Promise<string> {
+  const key = Deno.env.get('GEMINI_API_KEY') || ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of FORMAT_MODELS) {
+      try {
+        const res = await tfetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
+        }, 25000)
+        if (res.status === 429 || !res.ok) continue
+        const data = await res.json()
+        const parts = data?.candidates?.[0]?.content?.parts ?? []
+        const out = parts.map((p: any) => (p && p.text) ? p.text : '').join('').trim()
+        if (out) return out
+      } catch (e) { console.error('geminiGen', model, String(e)) }
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 7000))
+  }
+  return ''
+}
+function briefPrompt(postsText: string, lang: 'English' | 'French'): string {
+  return [
+    "You are Francis the rooster. Summarize Donald Trump's original Truth Social posts of the LAST 24 HOURS into ONE clean morning brief IN " + lang.toUpperCase() + '.',
+    "TRUMP'S POSTS (last 24h):", '---', postsText, '---',
+    'Output EXACTLY these marker lines (nothing before or after, no title):',
+    'TOPIC: <emoji> <short topic, 3 to 8 words>',
+    '(repeat TOPIC for each distinct topic — 3 to 7 TOPIC lines total)',
+    'SUMMARY: <one factual paragraph, 3 to 5 sentences, on what Trump focused on and the main themes>',
+    'TAKE: <one short paragraph — Francis\' neutral, level-headed read of the last 24h. NO hype, NO partisan bias>',
+    'RULES:',
+    '- Base everything ONLY on the posts above. NEVER invent. Neutral and factual — this is politically sensitive, keep zero bias.',
+    '- Keep the markers EXACTLY: TOPIC:, SUMMARY:, TAKE:. Write the values in ' + lang.toUpperCase() + '.',
+    '- If there are no real posts, output only: NONE',
+    'Output ONLY the marker lines.',
+  ].join(NL)
+}
+type BriefData = { topics: string[]; summary: string; take: string }
+function parseBrief(s: string): BriefData {
+  const out: BriefData = { topics: [], summary: '', take: '' }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^TOPIC\s*:/i.test(line)) { const t = line.replace(/^TOPIC\s*:/i, '').trim(); if (t) out.topics.push(t) }
+    else if (/^SUMMARY\s*:/i.test(line)) out.summary = line.replace(/^SUMMARY\s*:/i, '').trim()
+    else if (/^TAKE\s*:/i.test(line)) out.take = line.replace(/^TAKE\s*:/i, '').trim()
+  }
+  return out
+}
+function buildBrief(lang: 'en' | 'fr', p: BriefData): string {
+  const fr = lang === 'fr'
+  const L = fr
+    ? { topics: 'Sujets abordés', brief: 'En bref', take: 'Le mot de Francis' }
+    : { topics: 'Topics Covered', brief: 'In Brief', take: "Francis' Take" }
+  const parts: string[] = ['🐓 <b>Trump Morning Brief</b>']
+  if (p.topics.length) parts.push('', '🇺🇸 <b>' + L.topics + '</b>', ...p.topics.map((t) => '• ' + esc(t)))
+  if (p.summary) parts.push('', '📌 <b>' + L.brief + '</b>', esc(p.summary))
+  if (p.take) parts.push('', '🐓 <b>' + L.take + '</b>', esc(p.take))
+  return parts.join(NL)
+}
+async function pinMsg(chat: number, msgId: number): Promise<void> {
+  if (!msgId) return
+  await tgCall('pinChatMessage', { chat_id: chat, message_id: msgId, disable_notification: true })
+}
+async function runBrief(sb: any): Promise<{ ok: boolean; reason: string }> {
+  const { posts } = await collectFresh(24 * 60)   // dernières 24h
+  if (!posts.length) return { ok: false, reason: 'aucun post Trump sur 24h' }
+  const postsText = posts.map((p) => '- ' + p.text).filter((l) => l.length > 3).join(NL).slice(0, 6000)
+  const enStruct = await geminiGen(briefPrompt(postsText, 'English'))
+  if (!enStruct || enStruct.toUpperCase().indexOf('NONE') === 0) return { ok: false, reason: 'brief: gen EN vide/NONE' }
+  const enP = parseBrief(enStruct)
+  if (!enP.summary && !enP.topics.length) return { ok: false, reason: 'brief: structure EN vide' }
+  const frStruct = await geminiGen(briefPrompt(postsText, 'French'))
+  const frP = parseBrief(frStruct)
+  const frData = (frP.summary || frP.topics.length) ? frP : enP
+  const en = buildBrief('en', enP)
+  const fr = buildBrief('fr', frData)
+  const id = await tgGet('sendMessage', { chat_id: COOP_CHAT, message_thread_id: COOP_THREAD, text: en, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: NLANG_BTN })
+  if (!id) return { ok: false, reason: 'brief: envoi Telegram KO' }
+  await storeI18n(sb, COOP_CHAT, id, en, fr)
+  await pinMsg(COOP_CHAT, id)
+  try {   // marque l'envoi réel pour le rapport 22h40
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
+    await sb.from('automation_sent').upsert({ day, job_key: 'trump-morning-brief' }, { onConflict: 'day,job_key' })
+  } catch { /* best-effort */ }
+  return { ok: true, reason: '' }
+}
+
 Deno.serve(async (req: Request) => {
   const secret = Deno.env.get('CRON_SECRET')
   if (!secret || req.headers.get('x-cron-secret') !== secret) return new Response('forbidden', { status: 403 })
@@ -293,8 +380,15 @@ Deno.serve(async (req: Request) => {
   if (!botToken || !geminiKey) return new Response('missing config', { status: 500 })
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-  let dryRun = false, testOne = false
-  try { const b = await req.json(); if (b && b.dryRun === true) dryRun = true; if (b && b.testOne === true) testOne = true } catch { /* ok */ }
+  let dryRun = false, testOne = false, brief = false
+  try { const b = await req.json(); if (b && b.dryRun === true) dryRun = true; if (b && b.testOne === true) testOne = true; if (b && b.kind === 'brief') brief = true } catch { /* ok */ }
+
+  // Trump Morning Brief (6h05, épinglé) : résumé des posts des dernières 24h.
+  if (brief) {
+    const bg = (async () => { try { const r = await runBrief(supabase); if (!r.ok) console.error('trump brief:', r.reason); else console.log('trump brief posté + épinglé') } catch (e) { console.error('trump brief ex:', String(e)) } })()
+    ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
+    return new Response('accepted', { status: 202 })
+  }
 
   if (dryRun) {
     const { posts, reason } = await collectFresh()
