@@ -158,18 +158,22 @@ async function groundedSearch(prompt: string): Promise<string> {
   return ''
 }
 async function formatCall(prompt: string): Promise<string> {
-  for (const model of FORMAT_MODELS) {
-    try {
-      const res = await tfetch(geminiUrl(model), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 2048 } }),
-      }, 25000)
-      if (res.status === 429) { console.warn('racing formatCall 429 ' + model); continue }
-      if (!res.ok) { console.error('racing formatCall HTTP', res.status, model); continue }
-      const out = extractText(await res.json())
-      if (out) return out
-    } catch (e) { console.error('racing formatCall exception', model, String(e)) }
+  // 2 tours : 3.5 puis 3.1 ; si tout échoue (429/rate limit), pause ~7 s et on refait.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of FORMAT_MODELS) {
+      try {
+        const res = await tfetch(geminiUrl(model), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 2048 } }),
+        }, 25000)
+        if (res.status === 429) { console.warn('racing formatCall 429 ' + model + ' (tour ' + (attempt + 1) + ')'); continue }
+        if (!res.ok) { console.error('racing formatCall HTTP', res.status, model); continue }
+        const out = extractText(await res.json())
+        if (out) return out
+      } catch (e) { console.error('racing formatCall exception', model, String(e)) }
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 7000))
   }
   return ''
 }
@@ -450,10 +454,8 @@ async function runCommand(token: string, command: string): Promise<void> {
 
   // /news : UNE seule news, format STRUCTURÉ (EN défaut + bouton 🇫🇷). Anti-redite 10.
   if (type === 'news') {
-    const [enS, frS] = await Promise.all([
-      formatCall(racingNewsPrompt(sportLong, facts, 'English')),
-      formatCall(racingNewsPrompt(sportLong, facts, 'French')),
-    ])
+    const enS = await formatCall(racingNewsPrompt(sportLong, facts, 'English'))   // séquentiel (évite les 429 en rafale)
+    const frS = await formatCall(racingNewsPrompt(sportLong, facts, 'French'))
     const enP = parseRacingNews(enS)
     const frP = parseRacingNews(frS)
     if (!enP.head && !enP.summary && !frP.head && !frP.summary) {

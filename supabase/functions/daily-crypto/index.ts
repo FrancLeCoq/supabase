@@ -106,18 +106,23 @@ async function groundedSearch(prompt: string): Promise<string> {
 
 // -- Étape B : mise en forme / vérif (3.5-flash-lite, repli 3.1 ; sans grounding) --
 async function formatCall(prompt: string, temperature = 0.4): Promise<string> {
-  for (const model of FORMAT_MODELS) {
-    try {
-      const res = await tfetch(geminiUrl(model), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
-      }, 25000)
-      if (res.status === 429) { console.warn('formatCall 429 ' + model); continue }
-      if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
-      const out = extractText(await res.json())
-      if (out) return out
-    } catch (e) { console.error('formatCall exception', model, String(e)) }
+  // 2 tours : chaque tour essaie 3.5 puis 3.1 ; si tout échoue (429/rate limit),
+  // on attend ~7 s (le quota RPM retombe) et on refait un tour.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of FORMAT_MODELS) {
+      try {
+        const res = await tfetch(geminiUrl(model), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature, maxOutputTokens: 2048 } }),
+        }, 25000)
+        if (res.status === 429) { console.warn('formatCall 429 ' + model + ' (tour ' + (attempt + 1) + ')'); continue }
+        if (!res.ok) { console.error('formatCall HTTP', res.status, model); continue }
+        const out = extractText(await res.json())
+        if (out) return out
+      } catch (e) { console.error('formatCall exception', model, String(e)) }
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 7000))
   }
   return ''
 }
@@ -303,10 +308,8 @@ async function generateNews(slot: Slot): Promise<{ ok: boolean; en: string; fr: 
   const coveredToday = await fetchTodayTopics(36)   // anti-doublon sur 36h glissantes
   const facts = await groundedSearch(searchPromptNews(coveredToday))
   if (!facts || facts.toUpperCase().indexOf('NONE') === 0) return { ok: false, en: '', fr: '', logText: '', reason: 'étape A: pas d actu (facts=' + facts.slice(0, 60) + ')' }
-  const [enS, frS] = await Promise.all([
-    formatCall(cryptoNewsPrompt(facts, 'English')),
-    formatCall(cryptoNewsPrompt(facts, 'French')),
-  ])
+  const enS = await formatCall(cryptoNewsPrompt(facts, 'English'))   // séquentiel (évite les 429 en rafale)
+  const frS = await formatCall(cryptoNewsPrompt(facts, 'French'))
   const enP = parseCryptoNews(enS)
   const frP = parseCryptoNews(frS)
   if (!enP.head && !enP.summary && !frP.head && !frP.summary) return { ok: false, en: '', fr: '', logText: '', reason: 'étape B: structure vide' }
@@ -544,10 +547,8 @@ function buildNight(lang: 'en' | 'fr', fng: { value: number; cls: string; emoji:
 async function generateNight(): Promise<{ ok: boolean; en: string; fr: string; reason: string; logText: string }> {
   const [topics, fng] = await Promise.all([fetchTodayTopics(), fetchFngPiece()])
   const macroFacts = await groundedSearch(searchPromptMacro())
-  const [enStruct, frStruct] = await Promise.all([
-    formatCall(nightPrompt('English', topics, macroFacts)),
-    formatCall(nightPrompt('French', topics, macroFacts)),
-  ])
+  const enStruct = await formatCall(nightPrompt('English', topics, macroFacts))   // séquentiel (évite les 429 en rafale)
+  const frStruct = await formatCall(nightPrompt('French', topics, macroFacts))
   const enP = parseNight(enStruct)
   const frP = parseNight(frStruct)
   if (!enP.sections.length && !enP.mood) return { ok: false, en: '', fr: '', reason: 'night: structure vide (out=' + (enStruct || '').slice(0, 60) + ')', logText: '' }
