@@ -90,31 +90,56 @@ function searchPrompt(label: string, subject: string): string {
   ].join(NL)
 }
 
-// Mise en forme de la breaking news EN. Si facts == NONE, on s'appuie
-// UNIQUEMENT sur ce que le owner a écrit, en le présentant comme rumeur.
-function formatPrompt(label: string, subject: string, facts: string): string {
+function esc(s: string): string { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+
+// Mise en forme STRUCTURÉE de la breaking news (comme les actus automatisées) :
+// l'IA renvoie des MARQUEURS → on habille en HTML. EN et FR générés séparément.
+// Si facts == NONE, on s'appuie UNIQUEMENT sur le sujet du owner (comme rumeur).
+function brkPrompt(label: string, subject: string, facts: string, lang: 'English' | 'French'): string {
   const hasFacts = facts && facts.toUpperCase().indexOf('NONE') !== 0
   const factsBlock = hasFacts ? facts : '(no online confirmation found)'
   return [
-    'You are Francis the rooster, a witty but reliable news reporter for a Telegram community. Write a BREAKING NEWS post IN ENGLISH about this ' + label + ' topic.',
-    '',
+    'You are Francis the rooster, a witty but reliable reporter. Craft ONE clean, attractive BREAKING NEWS item IN ' + lang.toUpperCase() + ' about this ' + label + ' topic.',
     'EDITOR TOPIC (what the owner wants covered, may include a source):',
     subject,
-    '',
     'VERIFIED FACTS FOUND ONLINE:',
     '---', factsBlock, '---',
-    '',
     hasFacts
-      ? 'Write it as a confirmed breaking news, based ONLY on the verified facts + the editor topic. Do not invent anything beyond them.'
-      : 'Nothing was confirmed online, so treat the editor topic as an UNCONFIRMED RUMOUR: write it clearly as a rumour/buzz (e.g. "Rumour has it…", "Unconfirmed:"), and if the editor gave a source, cite it. Do NOT present it as confirmed fact and invent nothing.',
-    '',
-    'FORMAT:',
-    '- 2 to 4 short punchy sentences. Max ~500 characters. Plain text.',
-    '- Do NOT add any title/hook/emoji header (a "🚨 BREAKING" header is added automatically).',
-    '- Neutral and factual. NO financial advice, no "moon/pump/buy/sell".',
-    '',
-    'Output ONLY the breaking-news text, nothing else.',
+      ? 'Write it as CONFIRMED breaking news, based ONLY on the verified facts + the editor topic. Invent nothing beyond them.'
+      : 'Nothing confirmed online → treat the editor topic as an UNCONFIRMED RUMOUR (make the THEME or HEAD say "Rumour"/"Unconfirmed"), cite the editor source if given, invent nothing.',
+    'Output EXACTLY these marker lines (nothing before or after, no title, NO 🚨 header — it is added automatically):',
+    'THEME: <emoji> <1 to 3 word category, e.g. Driver Market, Regulation, Transfer>',
+    'HEAD: <ONE short, punchy headline sentence>',
+    'SUMMARY: <exactly 1 to 2 SHORT factual sentences — the essential only>',
+    "TAKE: <1 to 2 SHORT sentences — Francis' quick take. NO hype, no financial advice>",
+    'RULES:',
+    '- Keep the markers EXACTLY: THEME:, HEAD:, SUMMARY:, TAKE:. Write the values in ' + lang.toUpperCase() + '.',
+    '- Neutral and factual. NO "moon/pump/buy/sell". If nothing usable, output only: NONE',
+    'Output ONLY the marker lines.',
   ].join(NL)
+}
+type BrkData = { theme: string; head: string; summary: string; take: string }
+function parseBrk(s: string): BrkData {
+  const out: BrkData = { theme: '', head: '', summary: '', take: '' }
+  for (const raw of (s || '').split(NL)) {
+    const line = raw.trim()
+    if (/^THEME\s*:/i.test(line)) out.theme = line.replace(/^THEME\s*:/i, '').trim()
+    else if (/^HEAD\s*:/i.test(line)) out.head = line.replace(/^HEAD\s*:/i, '').trim()
+    else if (/^SUMMARY\s*:/i.test(line)) out.summary = line.replace(/^SUMMARY\s*:/i, '').trim()
+    else if (/^TAKE\s*:/i.test(line)) out.take = line.replace(/^TAKE\s*:/i, '').trim()
+  }
+  return out
+}
+// Corps HTML (sans l'en-tête « 🚨 BREAKING » ajouté à la publication).
+function buildBreaking(lang: 'en' | 'fr', p: BrkData): string {
+  const sec = lang === 'fr' ? 'En bref' : 'In Brief'
+  const sig = lang === 'fr' ? 'Le mot de Francis' : "Francis' Take"
+  const parts: string[] = []
+  if (p.theme) parts.push('<b>' + esc(p.theme) + '</b>')
+  if (p.head) parts.push(esc(p.head))
+  if (p.summary) parts.push('', '📌 <b>' + sec + '</b>', esc(p.summary))
+  if (p.take) parts.push('', '🐓 <b>' + sig + '</b>', esc(p.take))
+  return parts.join(NL)
 }
 
 // Annonce prête pour X (Twitter) : format court, percutant, sans lien t.me
@@ -394,13 +419,17 @@ Deno.serve(async (req: Request) => {
       }
 
       const facts = await groundedSearch(searchPrompt(cat.label, subject))
-      const en = await formatCall(formatPrompt(cat.label, subject, facts))
-      if (!en || en.toUpperCase().indexOf('NONE') === 0) {
+      const enS = await formatCall(brkPrompt(cat.label, subject, facts, 'English'))   // séquentiel (évite les 429)
+      const enP = parseBrk(enS)
+      if (!enS || enS.toUpperCase().indexOf('NONE') === 0 || (!enP.head && !enP.summary)) {
         await tg(token, 'sendMessage', { chat_id: owner, text: '🚨 Breaking news — impossible de rédiger. Réessaie avec un sujet plus précis.' })
         return
       }
-      const frRaw = await translateToFrench(en)   // essaie 3.5 puis 3.1, valide chaque sortie
-      const fr = translationLooksValid(en, frRaw) ? frRaw : en   // repli cohérent (EN) si trad ratée
+      const frS = await formatCall(brkPrompt(cat.label, subject, facts, 'French'))
+      const frP = parseBrk(frS)
+      const frData = (frP.head || frP.summary) ? frP : enP   // repli cohérent si FR raté
+      const en = buildBreaking('en', enP)
+      const fr = buildBreaking('fr', frData)
 
       const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       await supabase.from('breaking_pending').upsert(

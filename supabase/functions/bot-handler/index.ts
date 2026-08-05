@@ -692,7 +692,7 @@ Deno.serve(async (req) => {
         // Catégorie → emoji + topics (EN Chicken Coop / FR Poulailler).
         const BN_PUB: Record<string, { emoji: string; en: number; fr: number }> = {
           f1:         { emoji: '🏎️', en: 1631, fr: 147 },
-          motogp:     { emoji: '🏍️', en: 1631, fr: 147 },
+          motogp:     { emoji: '🏍️', en: 2259, fr: 147 },
           worldroost: { emoji: '🌍', en: 1489, fr: 45 },
           frenchcoop: { emoji: '🇫🇷', en: 2290, fr: 2290 },
           crypto:     { emoji: '⚡', en: 1490, fr: 43 },
