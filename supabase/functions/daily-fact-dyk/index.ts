@@ -103,15 +103,64 @@ function fmtUsd(n: number): string {
 // MC courant : table franc_market. Variation : snapshot quotidien dans
 // franc_mc_snap (créée par toi en SQL). Sans snapshot, on affiche la MC
 // sans % (auto-cicatrisant : le % apparaît dès que la table existe).
+// Market cap $FRANC EN DIRECT (mêmes sources que daily-pump). La table
+// franc_market ne stocke qu'une valeur (souvent périmée) : on la respecte
+// seulement si auto=false (valeur figée manuelle), sinon on calcule en direct.
+const FRANC_MINT_SOL = 'AacckLUizxHFpSGdcN9ppEfv2UCbdqZspEhHeR8Gpump'
+const FRANC_TON_MASTER = 'EQBMR3POM1sdShe7QoSVt6DDauoor4QOK4HsN7eBdoi5lrn6'
+async function dexMarketCap(addr: string, chainId: string): Promise<number | null> {
+  try {
+    const res = await tfetch('https://api.dexscreener.com/latest/dex/tokens/' + addr)
+    if (!res.ok) return null
+    const data = await res.json()
+    const pairs = (data && data.pairs ? data.pairs : []).filter((p: any) => p && p.chainId === chainId)
+    if (pairs.length === 0) return null
+    pairs.sort((a: any, b: any) => ((b && b.liquidity && b.liquidity.usd) || 0) - ((a && a.liquidity && a.liquidity.usd) || 0))
+    const mc = Number(pairs[0].marketCap != null ? pairs[0].marketCap : pairs[0].fdv)
+    return isFinite(mc) && mc > 0 ? mc : null
+  } catch { return null }
+}
+async function solMarketCap(): Promise<number | null> {
+  try {
+    const res = await tfetch('https://frontend-api-v3.pump.fun/coins/' + FRANC_MINT_SOL)
+    if (!res.ok) return null
+    const d = await res.json()
+    const mc = Number(d && d.usd_market_cap)
+    return isFinite(mc) && mc > 0 ? mc : null
+  } catch { return null }
+}
+async function tonMarketCap(): Promise<number | null> {
+  const dex = await dexMarketCap(FRANC_TON_MASTER, 'ton')
+  if (dex) return dex
+  try {
+    const [rRates, rJetton] = await Promise.all([
+      tfetch('https://tonapi.io/v2/rates?tokens=' + FRANC_TON_MASTER + '&currencies=usd'),
+      tfetch('https://tonapi.io/v2/jettons/' + FRANC_TON_MASTER),
+    ])
+    if (!rRates.ok || !rJetton.ok) return null
+    const rates = await rRates.json(); const jetton = await rJetton.json()
+    const price = Number(rates?.rates?.[FRANC_TON_MASTER]?.prices?.USD)
+    const decimals = Number(jetton?.metadata?.decimals != null ? jetton.metadata.decimals : 9)
+    const supply = Number(jetton?.total_supply) / Math.pow(10, decimals)
+    if (!isFinite(price) || price <= 0 || !isFinite(supply) || supply <= 0) return null
+    return price * supply
+  } catch { return null }
+}
 async function francDaily(): Promise<{ ton: number; sol: number; tonPct: number | null; solPct: number | null }> {
   const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const H = { apikey: key || '', Authorization: 'Bearer ' + (key || '') }
-  const cur: Record<string, number> = {}
+  const rows: Record<string, { mc: number; auto: boolean }> = {}
   try {
-    const r = await tfetch(url + '/rest/v1/franc_market?select=chain,market_cap_usd', { headers: H })
-    if (r.ok) for (const row of await r.json()) cur[String(row.chain)] = Number(row.market_cap_usd) || 0
+    const r = await tfetch(url + '/rest/v1/franc_market?select=chain,market_cap_usd,auto', { headers: H })
+    if (r.ok) for (const row of await r.json()) rows[String(row.chain)] = { mc: Number(row.market_cap_usd) || 0, auto: !!row.auto }
   } catch { /* défaut plus bas */ }
-  const ton = cur.ton || 1300, sol = cur.sol || 2400
+  const mcFor = async (chain: 'ton' | 'sol', fallback: number): Promise<number> => {
+    const row = rows[chain]
+    if (row && !row.auto) return row.mc                       // valeur figée manuelle
+    const live = chain === 'sol' ? await solMarketCap() : await tonMarketCap()
+    return (live && live > 0) ? live : ((row && row.mc) || fallback)
+  }
+  const [ton, sol] = await Promise.all([mcFor('ton', 1300), mcFor('sol', 2400)])
   const prev: Record<string, number> = {}
   try {
     const r = await tfetch(url + '/rest/v1/franc_mc_snap?select=chain,mc', { headers: H })
