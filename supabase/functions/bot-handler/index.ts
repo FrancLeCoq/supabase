@@ -188,6 +188,8 @@ const TR_BUTTON = { inline_keyboard: [[{ text: '🇬🇧 EN', callback_data: 'tr
 // Bouton des news auto PRÉ-ENREGISTRÉES : un SEUL bouton « Translate in French ».
 // Au clic → aperçu FR ~20 s avec décompte, puis retour auto à l'anglais.
 const NLANG_BTN = { inline_keyboard: [[{ text: 'Translate in French 🇫🇷', callback_data: 'nlang:fr' }]] }
+// French Coop : message FR par défaut → bouton vers l'anglais (toggle home=fr).
+const NLANG_FR_BTN = { inline_keyboard: [[{ text: 'Translate in English 🇬🇧', callback_data: 'nlangf:en' }]] }
 
 // ── Aperçu FR temporaire (20 s) + décompte, puis retour auto à l'anglais ──
 // Message partagé par tout le groupe → le FR n'est qu'un coup d'œil de 20 s.
@@ -692,16 +694,19 @@ Deno.serve(async (req) => {
           f1:         { emoji: '🏎️', en: 1631, fr: 147 },
           motogp:     { emoji: '🏍️', en: 1631, fr: 147 },
           worldroost: { emoji: '🌍', en: 1489, fr: 45 },
+          frenchcoop: { emoji: '🇫🇷', en: 2290, fr: 2290 },
           crypto:     { emoji: '⚡', en: 1490, fr: 43 },
         }
         const m = BN_PUB[String(draft.category)]
         if (!m) { await sendMessage(cbToken, cbUser.id, '⚠️ Catégorie inconnue, publication annulée.'); await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id); return new Response('ok') }
         const enMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.en}`
         const frMsg = `🚨 <b>BREAKING</b> ${m.emoji}\n\n${draft.fr}`
-        // The Chicken Coop uniquement (Poulailler supprimé) : EN par défaut +
-        // bouton 🇬🇧/🇫🇷 pré-enregistré (bascule instantanée, sans Gemini). html:true (balises <b>).
-        const sentEn = await sendMessage(cbToken, CHICKEN_COOP, enMsg, { message_thread_id: m.en, reply_markup: NLANG_BTN })
-        if (sentEn?.message_id) await cbSupa.from('news_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sentEn.message_id, en: enMsg, fr: frMsg, html: true })
+        // The Chicken Coop : bouton 🇬🇧/🇫🇷 pré-enregistré (bascule instantanée). html:true.
+        // French Coop = FR par défaut (bouton EN) ; les autres = EN par défaut (bouton FR).
+        const frDefault = String(draft.category) === 'frenchcoop'
+        const sent = await sendMessage(cbToken, CHICKEN_COOP, frDefault ? frMsg : enMsg,
+          { message_thread_id: m.en, reply_markup: frDefault ? NLANG_FR_BTN : NLANG_BTN })
+        if (sent?.message_id) await cbSupa.from('news_i18n').upsert({ chat_id: CHICKEN_COOP, message_id: sent.message_id, en: enMsg, fr: frMsg, html: true })
         await cbSupa.from('breaking_pending').delete().eq('owner_id', cbUser.id)
         await sendMessage(cbToken, cbUser.id, '✅ Breaking news publiée dans The Chicken Coop.')
         return new Response('ok')
@@ -1075,6 +1080,7 @@ Deno.serve(async (req) => {
         '/f1':         { cat: 'f1',         emoji: '🏎️', label: 'F1' },
         '/motogp':     { cat: 'motogp',     emoji: '🏍️', label: 'MotoGP' },
         '/worldroost': { cat: 'worldroost', emoji: '🌍', label: 'World Roost' },
+        '/frenchcoop': { cat: 'frenchcoop', emoji: '🇫🇷', label: 'French Coop' },
         '/crypto':     { cat: 'crypto',     emoji: '⚡', label: 'Crypto' },
         '/x':          { cat: 'x',          emoji: '📤', label: 'X (annonce à publier)' },
       }
@@ -1127,7 +1133,7 @@ Deno.serve(async (req) => {
         `<i>(classements course/qualifs/we envoyés en image PNG)</i>\n\n` +
         `<b>3️⃣ Breaking news perso</b>\n` +
         `/f1 — Breaking news F1\n/motogp — Breaking news MotoGP\n/worldroost — Breaking news World Roost\n` +
-        `/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n` +
+        `/frenchcoop — Breaking news French Coop 🇫🇷\n/crypto — Breaking news Crypto\n/x — Annonce prête pour X\n` +
         `/xtrend — Post viral sur une tendance X (🌍 monde)\n` +
         `/xtrendUS — Post viral tendance X (🇺🇸 US)\n/xtrendFR — Post viral tendance X (🇫🇷 France)\n` +
         `<i>(pluriels aussi ok : /xtrends, /xtrendsUS, /xtrendsFR)</i>\n\n` +

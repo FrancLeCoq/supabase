@@ -31,6 +31,7 @@ const CAT: Record<string, { emoji: string; label: string }> = {
   f1: { emoji: '🏎️', label: 'F1' },
   motogp: { emoji: '🏍️', label: 'MotoGP' },
   worldroost: { emoji: '🌍', label: 'World Roost' },
+  frenchcoop: { emoji: '🇫🇷', label: 'French Coop (France & Europe news)' },
   crypto: { emoji: '⚡', label: 'Crypto' },
   x: { emoji: '📤', label: 'X' },   // annonce prête à publier sur X (Twitter)
   xtrend: { emoji: '🔥', label: 'X Trend' },   // post viral sur une tendance X (hors $FRANC)
