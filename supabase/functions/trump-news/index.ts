@@ -348,6 +348,32 @@ async function pinMsg(chat: number, msgId: number): Promise<void> {
   if (!msgId) return
   await tgCall('pinChatMessage', { chat_id: chat, message_id: msgId, disable_notification: true })
 }
+async function unpinMsg(chat: number, msgId: number): Promise<void> {
+  if (!msgId) return
+  await tgCall('unpinChatMessage', { chat_id: chat, message_id: msgId })
+}
+// Mémorise / relit l'ID du DERNIER brief épinglé (réutilise daily_news_log,
+// slot dédié) → on dépingle celui d'hier avant d'épingler celui du jour.
+async function lastBriefPinId(): Promise<number> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  try {
+    const res = await tfetch(url + '/rest/v1/daily_news_log?slot=eq.trump_brief_pin&select=summary&order=created_at.desc&limit=1',
+      { headers: { apikey: key || '', Authorization: 'Bearer ' + (key || '') } })
+    if (!res.ok) return 0
+    const rows = await res.json()
+    return (Array.isArray(rows) && rows[0]) ? (Number(rows[0].summary) || 0) : 0
+  } catch { return 0 }
+}
+async function storeBriefPinId(msgId: number): Promise<void> {
+  const url = Deno.env.get('SUPABASE_URL'); const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  try {
+    await tfetch(url + '/rest/v1/daily_news_log', {
+      method: 'POST',
+      headers: { apikey: key || '', Authorization: 'Bearer ' + (key || ''), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ day: new Date().toISOString().slice(0, 10), slot: 'trump_brief_pin', summary: String(msgId) }),
+    })
+  } catch { /* best-effort */ }
+}
 async function runBrief(sb: any): Promise<{ ok: boolean; reason: string }> {
   const { posts } = await collectFresh(24 * 60)   // dernières 24h
   if (!posts.length) return { ok: false, reason: 'aucun post Trump sur 24h' }
@@ -364,7 +390,11 @@ async function runBrief(sb: any): Promise<{ ok: boolean; reason: string }> {
   const id = await tgGet('sendMessage', { chat_id: COOP_CHAT, message_thread_id: COOP_THREAD, text: en, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: NLANG_BTN })
   if (!id) return { ok: false, reason: 'brief: envoi Telegram KO' }
   await storeI18n(sb, COOP_CHAT, id, en, fr)
-  // NB : on n'épingle PAS le brief (seul /setuptrump reste épinglé dans le topic).
+  // Épingle le brief du jour ; dépingle celui d'hier (le /setuptrump reste épinglé).
+  const prevPin = await lastBriefPinId()
+  if (prevPin && prevPin !== id) await unpinMsg(COOP_CHAT, prevPin)
+  await pinMsg(COOP_CHAT, id)
+  await storeBriefPinId(id)
   try {   // marque l'envoi réel pour le rapport 22h40
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
     await sb.from('automation_sent').upsert({ day, job_key: 'trump-morning-brief' }, { onConflict: 'day,job_key' })
