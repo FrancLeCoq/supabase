@@ -364,7 +364,7 @@ async function runBrief(sb: any): Promise<{ ok: boolean; reason: string }> {
   const id = await tgGet('sendMessage', { chat_id: COOP_CHAT, message_thread_id: COOP_THREAD, text: en, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: NLANG_BTN })
   if (!id) return { ok: false, reason: 'brief: envoi Telegram KO' }
   await storeI18n(sb, COOP_CHAT, id, en, fr)
-  await pinMsg(COOP_CHAT, id)
+  // NB : on n'épingle PAS le brief (seul /setuptrump reste épinglé dans le topic).
   try {   // marque l'envoi réel pour le rapport 22h40
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
     await sb.from('automation_sent').upsert({ day, job_key: 'trump-morning-brief' }, { onConflict: 'day,job_key' })
