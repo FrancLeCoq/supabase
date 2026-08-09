@@ -230,15 +230,19 @@ export const GAMES: Array<{
     url: CHICKENFIGHT_URL,
     rules:
       `🥊 <b>CHICKEN FIGHT — Le Coq Francis</b>\n\n` +
-      `Peck. Dodge. Knock out. — step into Francis' arena and out-fight your rivals! 🐓\n\n` +
+      `Peck. Dodge. Knock out. — step into Francis' arena! 🐓\n\n` +
       `📋 <b>Rules:</b>\n` +
-      `👊 <b>Attack</b> to land pecks and <b>dodge</b> to avoid your opponent's blows\n` +
-      `❤️ Empty your rival's health bar before yours runs out\n` +
-      `⚡ Chain hits to build combos and hit harder\n` +
-      `🏆 Win rounds to climb the ladder and beat tougher opponents\n\n` +
+      `🥊 Each turn both roosters pick an action — they resolve <b>at the same time</b>: peck, guard, Cocorico, slashing wing, dodge, feint & special attack\n` +
+      `❤️ Read your rival, counter their move and empty their health bar before yours\n` +
+      `🕹️ <b>Real-Time Arena (beta)</b>: move with the D-pad, jump ⬆️, guard ⬇️, strike — beak (J), leg (L), wing (K), egg projectile (space)\n` +
+      `🐓 <b>My Rooster</b> — level up with XP, feathers, stats & trophies\n\n` +
+      `🎮 <b>Modes:</b>\n` +
+      `🥊 <b>Training</b> — everyone, face the Valet\n` +
+      `🏆 <b>Ranked Arena</b> — climb a local rating vs evolving AI\n` +
+      `👥 <b>Local Duel</b> — 2 players on one device, hidden picks\n\n` +
       `💎 <b>Trial vs $FRANC Holder:</b>\n` +
-      `⏱️ <b>Free</b> — first opponents\n` +
-      `♾️ <b>$FRANC Holders</b> — full ladder + Competition mode & virtual $FRANC rewards\n\n` +
+      `⏱️ <b>Free</b> — Training, Ranked Arena & Local Duel\n` +
+      `♾️ <b>$FRANC Holders</b> — Royal Campaign (Valet ▸ Queen ▸ King) + advanced techniques\n\n` +
       `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
   },
   {
@@ -248,15 +252,20 @@ export const GAMES: Array<{
     url: CHICKENREFLEX_URL,
     rules:
       `⚡ <b>CHICKEN REFLEX — Le Coq Francis</b>\n\n` +
-      `Tap fast. Beat the clock. — test how sharp your reflexes really are! 🐓\n\n` +
+      `Tap fast. Beat the clock. — a 30-second reflex rush! 🐓\n\n` +
       `📋 <b>Rules:</b>\n` +
-      `👆 <b>Tap</b> the targets the instant they appear — the faster, the more points\n` +
-      `🎯 Miss or tap too early and you lose the streak\n` +
-      `⏱️ The pace speeds up round after round — keep up!\n` +
-      `🏆 Chase your best reaction time and top the leaderboard\n\n` +
+      `👆 A target flashes in the center — tap it as fast as you can… but NEVER tap the 🦊 fox!\n` +
+      `🥚 <b>Points:</b> farm loot (egg/corn/worm/coin) +1 · Francis +2 · Jack +3 · Queen +4 · King +5\n` +
+      `⚠️ <b>Penalties:</b> a fox or trapped egg −2 · empty tap −1 · tap under 90 ms −1\n` +
+      `⏱️ The pace speeds up over the 30s — the last 6 seconds double the foxes!\n\n` +
+      `🎮 <b>Difficulty:</b>\n` +
+      `🟢 <b>Easy</b> — everyone\n` +
+      `🟠 <b>Medium</b> — $FRANC holders (faster, more foxes)\n` +
+      `🔴 <b>Hard</b> — $FRANC holders (fastest + traps)\n\n` +
+      `🏆 <b>Daily leaderboard</b> — best reaction time, resets at midnight (Paris).\n\n` +
       `💎 <b>Trial vs $FRANC Holder:</b>\n` +
-      `⏱️ <b>Free</b> — classic mode\n` +
-      `♾️ <b>$FRANC Holders</b> — Competition mode + virtual $FRANC economy & best-score tracking\n\n` +
+      `⏱️ <b>Free</b> — Easy mode\n` +
+      `♾️ <b>$FRANC Holders</b> — Medium & Hard (via wallet or ⭐ Stars)\n\n` +
       `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
   }
 ]
