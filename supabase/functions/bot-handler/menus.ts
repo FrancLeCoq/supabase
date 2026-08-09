@@ -222,6 +222,42 @@ export const GAMES: Array<{
       `⏱️ <b>Free</b> — Draw 1 card mode\n` +
       `♾️ <b>$FRANC Holders</b> — Draw 3 cards mode + 3 hints per game + best score & time\n\n` +
       `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
+  },
+  {
+    key: 'chickenfight',
+    label: '🥊 ChickenFight',
+    playLabel: '🥊 Play ChickenFight',
+    url: CHICKENFIGHT_URL,
+    rules:
+      `🥊 <b>CHICKEN FIGHT — Le Coq Francis</b>\n\n` +
+      `Peck. Dodge. Knock out. — step into Francis' arena and out-fight your rivals! 🐓\n\n` +
+      `📋 <b>Rules:</b>\n` +
+      `👊 <b>Attack</b> to land pecks and <b>dodge</b> to avoid your opponent's blows\n` +
+      `❤️ Empty your rival's health bar before yours runs out\n` +
+      `⚡ Chain hits to build combos and hit harder\n` +
+      `🏆 Win rounds to climb the ladder and beat tougher opponents\n\n` +
+      `💎 <b>Trial vs $FRANC Holder:</b>\n` +
+      `⏱️ <b>Free</b> — first opponents\n` +
+      `♾️ <b>$FRANC Holders</b> — full ladder + Competition mode & virtual $FRANC rewards\n\n` +
+      `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
+  },
+  {
+    key: 'chickenreflex',
+    label: '⚡ ChickenReflex',
+    playLabel: '⚡ Play ChickenReflex',
+    url: CHICKENREFLEX_URL,
+    rules:
+      `⚡ <b>CHICKEN REFLEX — Le Coq Francis</b>\n\n` +
+      `Tap fast. Beat the clock. — test how sharp your reflexes really are! 🐓\n\n` +
+      `📋 <b>Rules:</b>\n` +
+      `👆 <b>Tap</b> the targets the instant they appear — the faster, the more points\n` +
+      `🎯 Miss or tap too early and you lose the streak\n` +
+      `⏱️ The pace speeds up round after round — keep up!\n` +
+      `🏆 Chase your best reaction time and top the leaderboard\n\n` +
+      `💎 <b>Trial vs $FRANC Holder:</b>\n` +
+      `⏱️ <b>Free</b> — classic mode\n` +
+      `♾️ <b>$FRANC Holders</b> — Competition mode + virtual $FRANC economy & best-score tracking\n\n` +
+      `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
   }
 ]
 
