@@ -66,6 +66,7 @@ const GROUPS: Group[] = [
     title: '🇺🇸 Trump',
     items: [
       ['trump-morning-brief', '06:05 Morning Brief'],
+      ['trump-evening-brief', '18:05 Evening Brief'],
     ],
   },
   {

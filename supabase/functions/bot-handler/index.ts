@@ -14,7 +14,7 @@ function pauseScopeLabel(scope: string): string {
   return scope === 'chickencoop' ? 'The Chicken Coop'
     : 'les échanges individuels (DM + Business)'
 }
-import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, CHICKENBLAST_URL, CHICKENFIGHT_URL, CHICKENREFLEX_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SOLITAIRE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
+import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, CHICKENBLAST_URL, CHICKENFIGHT_URL, CHICKENHANG_URL, CHICKENREFLEX_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SOLITAIRE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
 import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mentionsOldTestCa, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
@@ -1161,25 +1161,30 @@ Deno.serve(async (req) => {
       await sendMessage(token, chatId,
         `🕒 <b>Programme journalier d'envoi</b>\n<i>(heure de Paris)</i>\n\n` +
         `<b>1️⃣ The Chicken Coop 🇬🇧🇫🇷</b> (bilingue)\n` +
+        `06h05 — 🇺🇸 Trump Morning Brief\n` +
         `07h00 — 🌍 World Roost · Matin\n` +
         `07h55 — ⏰ Crypto Morning\n` +
         `08h50 — 😄 Blague du matin\n` +
         `09h45 — ⚡ Cocorico Dump\n` +
         `10h40 — 🌍 World Roost · Éco\n` +
+        `11h35 — 🇫🇷 Le Coq de Midi\n` +
         `12h30 — 🌞 Crypto Midday\n` +
         `13h25 — 🌍 World Roost · Midi\n` +
-        `14h20 — 💡 Le savais-tu ?\n` +
+        `14h20 — 🐓 Cocorico Fact\n` +
+        `15h15 — 🇪🇺 Le Cocorico Express\n` +
         `16h10 — 🌍 World Roost · Tech\n` +
         `17h05 — 🚀 Cocorico Pump\n` +
         `18h00 — 🌍 World Roost · Soir\n` +
+        `18h05 — 🇺🇸 Trump Evening Brief\n` +
         `18h55 — 🌆 Crypto Evening\n` +
+        `19h50 — 🇫🇷 Le Cocorico du Soir\n` +
         `20h45 — 🌙 Crypto Night\n` +
         `21h40 — 🌍 World Roost · Nuit\n` +
         `22h30 — 🌙 Bonne nuit\n\n` +
         `<b>2️⃣ Golden Rooster 🔞</b>\n` +
-        `11h35 — 🌶️ Hot News · Matin\n` +
-        `15h15 — 🌶️ Hot News · Midi\n` +
-        `19h50 — 🌶️ Hot News · Soir\n` +
+        `10h10 — 🌶️ Hot News · Matin\n` +
+        `13h10 — 🌶️ Hot News · Midi\n` +
+        `20h10 — 🌶️ Hot News · Soir\n` +
         `🖼️ Feed images : chaque heure (via le NAS)\n` +
         `🔒 Vérif adhésion : rappel 08h00 · expulsion 10h00\n\n` +
         `<b>ℹ️ Interne (toi seul)</b>\n` +
@@ -1632,7 +1637,8 @@ Deno.serve(async (req) => {
         `🃏 <b>ChickenSolitaire</b> — Flip. Stack. Win.\n` +
         `🥊 <b>ChickenFight</b> — Peck. Dodge. Knock out.\n` +
         `⚡ <b>ChickenReflex</b> — Tap fast. Beat the clock.\n` +
-        `💥 <b>ChickenBlast</b> — Slide. Fill. Blast.`,
+        `💥 <b>ChickenBlast</b> — Slide. Fill. Blast.\n` +
+        `🪝 <b>ChickenHang</b> — Guess the word.`,
         [
           [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
@@ -1641,7 +1647,7 @@ Deno.serve(async (req) => {
           [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
           [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
           [{ text: '🥊 ChickenFight', url: CHICKENFIGHT_URL }, { text: '⚡ ChickenReflex', url: CHICKENREFLEX_URL }],
-          [{ text: '💥 ChickenBlast', url: CHICKENBLAST_URL }],
+          [{ text: '💥 ChickenBlast', url: CHICKENBLAST_URL }, { text: '🪝 ChickenHang', url: CHICKENHANG_URL }],
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }]
         ]
       ,
@@ -1658,7 +1664,8 @@ Deno.serve(async (req) => {
         `🃏 <b>ChickenSolitaire</b> — Retourne. Empile. Gagne.\n` +
         `🥊 <b>ChickenFight</b> — Frappe. Esquive. Assomme.\n` +
         `⚡ <b>ChickenReflex</b> — Tape vite. Bats le chrono.\n` +
-        `💥 <b>ChickenBlast</b> — Glisse. Remplis. Explose.`,
+        `💥 <b>ChickenBlast</b> — Glisse. Remplis. Explose.\n` +
+        `🪝 <b>ChickenHang</b> — Devine le mot.`,
         [
           [{ text: '🐔 Tous les jeux & univers Francis', url: MENU_DEEPLINK }],
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
@@ -1667,7 +1674,7 @@ Deno.serve(async (req) => {
           [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
           [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
           [{ text: '🥊 ChickenFight', url: CHICKENFIGHT_URL }, { text: '⚡ ChickenReflex', url: CHICKENREFLEX_URL }],
-          [{ text: '💥 ChickenBlast', url: CHICKENBLAST_URL }],
+          [{ text: '💥 ChickenBlast', url: CHICKENBLAST_URL }, { text: '🪝 ChickenHang', url: CHICKENHANG_URL }],
           [{ text: '📜 Règles des jeux', url: RULES_DEEPLINK }]
         ]
       )
@@ -1759,24 +1766,22 @@ Deno.serve(async (req) => {
       if (userId !== OWNER_ID) return new Response('ok')   // owner uniquement (tapé dans le bot)
       await deleteMessage(token, chatId, messageId)
       await postSetupBilingual(token, supabase, EN_TOPIC.trump, FR_TOPIC.trump,
-        `🇺🇸 <b>Trump News — live from Truth Social</b>\n\n` +
-        `Every <b>original</b> post from Donald J. Trump on Truth Social, mirrored here automatically — text, photos & videos — within minutes. 🦅\n\n` +
-        `💰 Trump wanted to charge up to <b>$100,000/month</b> for early access to his posts.\n` +
-        `We rebuilt it ourselves — and here it's <b>100% FREE</b>.\n` +
-        `<b>That's the spirit of the coop.</b> 🐔\n\n` +
-        `🕒 <b>Plus, every morning (Paris time):</b>\n` +
-        `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — the last 24h summed up & pinned\n\n` +
-        `<i>Reposts (RT) are skipped — only his own original posts.</i>`,
+        `🇺🇸 <b>Trump News — the daily brief</b>\n\n` +
+        `Donald J. Trump posts a LOT. So instead of drowning you in every post, Francis reads them all and hands you <b>two clean recaps a day</b> — topics covered, the essentials, and Francis' take. 🦅\n\n` +
+        `🕒 <b>Every day (Paris time):</b>\n` +
+        `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — the last 12h, summed up\n` +
+        `👉 18:05 — 🐓 <b>Trump Evening Brief</b> — the last 12h, summed up\n\n` +
+        `💰 Trump wanted to charge up to <b>$100,000/month</b> for early access to his posts. Here it's <b>100% FREE</b>. <b>That's the spirit of the coop.</b> 🐔\n\n` +
+        `<i>Reposts (RT) are skipped — only his own original posts. No brief on the rare days he doesn't post.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       ,
-        `🇺🇸 <b>Trump News — en direct de Truth Social</b>\n\n` +
-        `Chaque post <b>original</b> de Donald J. Trump sur Truth Social, recopié ici automatiquement — texte, photos & vidéos — en quelques minutes. 🦅\n\n` +
-        `💰 Trump voulait faire payer jusqu'à <b>100 000 $/mois</b> pour accéder en primeur à ses posts.\n` +
-        `Nous l'avons recréé nous-mêmes — et ici, c'est <b>100% GRATUIT</b>.\n` +
-        `<b>C'est ça, l'esprit de la basse-cour.</b> 🐔\n\n` +
-        `🕒 <b>Et chaque matin (heure de Paris) :</b>\n` +
-        `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — les dernières 24h résumées & épinglées\n\n` +
-        `<i>Les reposts (RT) sont ignorés — uniquement ses posts originaux.</i>`,
+        `🇺🇸 <b>Trump News — le brief quotidien</b>\n\n` +
+        `Donald J. Trump poste ÉNORMÉMENT. Plutôt que de te noyer sous chaque post, Francis les lit tous et te livre <b>deux récaps par jour</b> — les sujets abordés, l'essentiel, et le mot de Francis. 🦅\n\n` +
+        `🕒 <b>Chaque jour (heure de Paris) :</b>\n` +
+        `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — les 12 dernières heures résumées\n` +
+        `👉 18:05 — 🐓 <b>Trump Evening Brief</b> — les 12 dernières heures résumées\n\n` +
+        `💰 Trump voulait faire payer jusqu'à <b>100 000 $/mois</b> pour accéder en primeur à ses posts. Ici, c'est <b>100% GRATUIT</b>. <b>C'est ça, l'esprit de la basse-cour.</b> 🐔\n\n` +
+        `<i>Les reposts (RT) sont ignorés — uniquement ses posts originaux. Pas de résumé les rares jours sans post.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )
       await sendMessage(token, chatId, tr('✅ Trump News publié et épinglé dans les deux groupes.', '✅ Trump News posted and pinned in both groups.'))
@@ -2022,6 +2027,17 @@ Deno.serve(async (req) => {
            `💥 <b>CHICKEN BLAST</b>\nSlide the blocks, fill the lines and blast them away — no timer, no rotation! 🐔`),
         { reply_markup: { inline_keyboard: [
           [{ text: tr('💥 Jouer à ChickenBlast','💥 Play ChickenBlast'), url: CHICKENBLAST_URL }]
+        ]}}
+      )
+      return new Response('ok')
+    }
+
+    if (btnIs(text, 'chickenhang')) {
+      await sendMessage(token, chatId,
+        tr(`🪝 <b>CHICKEN HANG</b>\nDevine le mot lettre par lettre avant que Francis ne soit à court de corde ! 🐔`,
+           `🪝 <b>CHICKEN HANG</b>\nGuess the word letter by letter before Francis runs out of rope! 🐔`),
+        { reply_markup: { inline_keyboard: [
+          [{ text: tr('🪝 Jouer à ChickenHang','🪝 Play ChickenHang'), url: CHICKENHANG_URL }]
         ]}}
       )
       return new Response('ok')

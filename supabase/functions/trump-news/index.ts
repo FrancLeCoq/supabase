@@ -333,12 +333,12 @@ function parseBrief(s: string): BriefData {
   }
   return out
 }
-function buildBrief(lang: 'en' | 'fr', p: BriefData): string {
+function buildBrief(lang: 'en' | 'fr', p: BriefData, title: string): string {
   const fr = lang === 'fr'
   const L = fr
     ? { topics: 'Sujets abordés', brief: 'En bref', take: 'Le mot de Francis' }
     : { topics: 'Topics Covered', brief: 'In Brief', take: "Francis' Take" }
-  const parts: string[] = ['🐓 <b>Trump Morning Brief</b>']
+  const parts: string[] = ['🐓 <b>' + esc(title) + '</b>']
   if (p.topics.length) parts.push('', '🇺🇸 <b>' + L.topics + '</b>', ...p.topics.map((t) => '• ' + esc(t)))
   if (p.summary) parts.push('', '📌 <b>' + L.brief + '</b>', esc(p.summary))
   if (p.take) parts.push('', '🐓 <b>' + L.take + '</b>', esc(p.take))
@@ -375,8 +375,15 @@ async function storeBriefPinId(msgId: number): Promise<void> {
   } catch { /* best-effort */ }
 }
 async function runBrief(sb: any): Promise<{ ok: boolean; reason: string }> {
-  const { posts } = await collectFresh(24 * 60)   // dernières 24h
-  if (!posts.length) return { ok: false, reason: 'aucun post Trump sur 24h' }
+  // Matin (06:05) ou soir (18:05) selon l'heure de Paris : chaque brief résume
+  // les posts des 12 DERNIÈRES HEURES (les 2 briefs couvrent la journée, sans doublon).
+  const parisHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }).format(new Date()))
+  const morning = parisHour < 12
+  const titleEn = morning ? 'Trump Morning Brief' : 'Trump Evening Brief'
+  const titleFr = morning ? 'Brief Trump — Matin' : 'Brief Trump — Soir'
+  const jobKey = morning ? 'trump-morning-brief' : 'trump-evening-brief'
+  const { posts } = await collectFresh(12 * 60)   // dernières 12h
+  if (!posts.length) return { ok: false, reason: 'aucun post Trump sur 12h (pas de résumé)' }
   const postsText = posts.map((p) => '- ' + p.text).filter((l) => l.length > 3).join(NL).slice(0, 6000)
   const enStruct = await geminiGen(briefPrompt(postsText, 'English'))
   if (!enStruct || enStruct.toUpperCase().indexOf('NONE') === 0) return { ok: false, reason: 'brief: gen EN vide/NONE' }
@@ -385,19 +392,15 @@ async function runBrief(sb: any): Promise<{ ok: boolean; reason: string }> {
   const frStruct = await geminiGen(briefPrompt(postsText, 'French'))
   const frP = parseBrief(frStruct)
   const frData = (frP.summary || frP.topics.length) ? frP : enP
-  const en = buildBrief('en', enP)
-  const fr = buildBrief('fr', frData)
+  const en = buildBrief('en', enP, titleEn)
+  const fr = buildBrief('fr', frData, titleFr)
   const id = await tgGet('sendMessage', { chat_id: COOP_CHAT, message_thread_id: COOP_THREAD, text: en, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: NLANG_BTN })
   if (!id) return { ok: false, reason: 'brief: envoi Telegram KO' }
   await storeI18n(sb, COOP_CHAT, id, en, fr)
-  // Épingle le brief du jour ; dépingle celui d'hier (le /setuptrump reste épinglé).
-  const prevPin = await lastBriefPinId()
-  if (prevPin && prevPin !== id) await unpinMsg(COOP_CHAT, prevPin)
-  await pinMsg(COOP_CHAT, id)
-  await storeBriefPinId(id)
+  // Plus d'épinglage : les briefs ne sont plus noyés (diffusion post-par-post arrêtée).
   try {   // marque l'envoi réel pour le rapport 22h40
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date())
-    await sb.from('automation_sent').upsert({ day, job_key: 'trump-morning-brief' }, { onConflict: 'day,job_key' })
+    await sb.from('automation_sent').upsert({ day, job_key: jobKey }, { onConflict: 'day,job_key' })
   } catch { /* best-effort */ }
   return { ok: true, reason: '' }
 }
@@ -439,21 +442,8 @@ Deno.serve(async (req: Request) => {
       { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 
-  const bg = (async () => {
-    try {
-      const { posts, reason } = await collectFresh()
-      if (posts.length === 0) { if (reason && reason !== 'aucun post récent') console.error('trump-news:', reason); return }
-      for (const p of posts) {
-        // Anti-doublon atomique : on ne poste qu'à la 1re prise du verrou.
-        const first = await claimSlot(supabase, 'trump:' + p.oid, DEDUP_TTL)
-        if (!first) continue
-        const media = await fetchMedia(p.link)
-        // EN par défaut + bouton 🇫🇷 -> The Chicken Coop.
-        await postPost(supabase, COOP_CHAT, COOP_THREAD, headerEN(p.t), headerFR(p.t), p.text, media, p.link)
-        console.log('trump-news poste', p.oid, 'media', media.length, p.text.slice(0, 60))
-      }
-    } catch (e) { console.error('trump-news bg ex:', String(e)) }
-  })()
-  ;(globalThis as any).EdgeRuntime?.waitUntil?.(bg)
-  return new Response('accepted', { status: 202 })
+  // Diffusion post-par-post ARRÊTÉE : Trump poste trop. On ne garde que les
+  // deux résumés quotidiens (kind:'brief' à 06:05 et 18:05). Le cron */15 min
+  // est supprimé côté base ; ce garde-fou évite toute rediffusion accidentelle.
+  return new Response('trump per-post diffusion disabled (use kind:brief)', { status: 200 })
 })
