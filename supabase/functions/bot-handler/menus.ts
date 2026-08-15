@@ -15,6 +15,7 @@ export const SOLITAIRE_URL  = 'https://t.me/FrancisLeCoqBot/ChickenSolitaire'  /
 
 export const CHICKENFIGHT_URL  = 'https://t.me/FrancisLeCoqBot/ChickenFight'
 export const CHICKENREFLEX_URL = 'https://t.me/FrancisLeCoqBot/ChickenReflex'
+export const CHICKENBLAST_URL  = 'https://t.me/FrancisLeCoqBot/ChickenBlast'
 
 export const SUDOKU_URL     = 'https://t.me/FrancisLeCoqBot/Sudoku'
 
@@ -267,6 +268,30 @@ export const GAMES: Array<{
       `⏱️ <b>Free</b> — Easy mode\n` +
       `♾️ <b>$FRANC Holders</b> — Medium & Hard (via wallet or ⭐ Stars)\n\n` +
       `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
+  },
+  {
+    key: 'chickenblast',
+    label: '💥 ChickenBlast',
+    playLabel: '💥 Play ChickenBlast',
+    url: CHICKENBLAST_URL,
+    rules:
+      `💥 <b>CHICKEN BLAST — Le Coq Francis</b>\n\n` +
+      `Slide. Fill. Blast. — a chill block-puzzle, no timer, no rotation! 🐓\n\n` +
+      `📋 <b>Rules:</b>\n` +
+      `🧩 <b>Drag</b> the blocks onto the grid — fill a full row or column and it clears\n` +
+      `🚫 No rotation, no time pressure — it's over when no piece fits anymore\n` +
+      `🏆 <b>Score:</b> 1 pt per placed cell + line clears (10 × lines² × combo, combo up to ×5)\n` +
+      `✨ Clear rows <b>and</b> columns at once for the biggest rewards\n\n` +
+      `🎮 <b>Modes:</b>\n` +
+      `🎯 <b>Free Play</b> — pick a tier, chase your high score\n` +
+      `🗺️ <b>Adventure</b> (holders) — chained levels, 3 lives, line goals, virtual $FRANC & TOP-3\n\n` +
+      `📊 <b>Difficulty:</b>\n` +
+      `🟢 Easy 8×8 · 🟡 Normal 8×8 (Tetrominos) — everyone\n` +
+      `🟠 Hard 8×8 · 🔴 Expert 9×9 — $FRANC holders\n\n` +
+      `💎 <b>Trial vs $FRANC Holder:</b>\n` +
+      `⏱️ <b>Free</b> — Easy & Normal\n` +
+      `♾️ <b>$FRANC Holders</b> — Hard, Expert + Adventure mode & virtual $FRANC economy\n\n` +
+      `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
   }
 ]
 
@@ -330,6 +355,7 @@ export const BTN = {
   chickensolitaire:{ fr: '🃏 ChickenSolitaire', en: '🃏 ChickenSolitaire' },
   chickenfight:{ fr: '🥊 ChickenFight', en: '🥊 ChickenFight' },
   chickenreflex:{ fr: '⚡ ChickenReflex', en: '⚡ ChickenReflex' },
+  chickenblast:{ fr: '💥 ChickenBlast', en: '💥 ChickenBlast' },
   holders:   { fr: '🔞 Spicy (18+)',  en: '🔞 Spicy (18+)' },
   refresh:   { fr: '🔄 Rafraîchir le menu',    en: '🔄 Refresh menu' },
   rules:     { fr: '📜 Règles des jeux',       en: '📜 Game Rules' },
@@ -363,6 +389,7 @@ export function buildKeyboard(isFR: boolean) {
       [L('francrun'),   L('ormuz')],
       [L('wordsearch'), L('chickensolitaire')],
       [L('chickenfight'), L('chickenreflex')],
+      [L('chickenblast')],
       [L('refresh'),    L('rules')],
       [L('holders')],
       [L('francTon'),   L('francSol')],
@@ -387,6 +414,7 @@ export function buildInlineMenu(isFR: boolean) {
     [{ text: L('francrun'), url: FRANCRUN_URL }, { text: L('ormuz'), url: ORMUZ_URL }],
     [{ text: L('wordsearch'), url: WORDSEARCH_URL }, { text: L('chickensolitaire'), url: SOLITAIRE_URL }],
     [{ text: L('chickenfight'), url: CHICKENFIGHT_URL }, { text: L('chickenreflex'), url: CHICKENREFLEX_URL }],
+    [{ text: L('chickenblast'), url: CHICKENBLAST_URL }],
     [{ text: L('refresh'), callback_data: 'start' }, { text: L('rules'), callback_data: 'rules_menu' }],
     [{ text: L('holders'), callback_data: 'holders' }],
     [{ text: L('francTon'), url: BUY_FRANC_TON_URL }, { text: L('francSol'), url: BUY_FRANC_SOL_URL }],

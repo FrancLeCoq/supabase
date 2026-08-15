@@ -14,7 +14,7 @@ function pauseScopeLabel(scope: string): string {
   return scope === 'chickencoop' ? 'The Chicken Coop'
     : 'les échanges individuels (DM + Business)'
 }
-import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, CHICKENFIGHT_URL, CHICKENREFLEX_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SOLITAIRE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
+import { BUY_FRANC_SOL_URL, BUY_FRANC_TON_URL, CASHBACK_DEEPLINK, CHICKEN_COOP_URL, CHICKENBLAST_URL, CHICKENFIGHT_URL, CHICKENREFLEX_URL, EGGCLICKER_URL, FRANCRUN_URL, MASTERMIND_URL, MENU_DEEPLINK, MOTUS_URL, ORMUZ_URL, RULES_DEEPLINK, RULES_MENU_TEXT, SNAKE_URL, SOLITAIRE_URL, SUDOKU_URL, TAMAGOTCHI_URL, WALLET_URL, WORDSEARCH_URL, btnIs, buildGameRulesKeyboard, buildInlineMenu, buildKeyboard, buildRulesMenuKeyboard, gameByKey, isKeyboardButton } from './menus.ts'
 import { getChatMemberStatus, isAbusive } from './moderation.ts'
 import { sendCashbackOffer } from './payments.ts'
 import { CASHBACK_NOTIFY_ID, CHICKEN_COOP, EN_TOPIC, FR_TOPIC, HOLDERS_GROUP_ID, OWNER_ID, ROOSTER_CHANNEL_ID, caPayload, createOneTimeInvite, deleteMessage, isCaRequest, mentionsOldTestCa, pinMessage, sendCA, sendMessage, sendNoDM } from './telegram.ts'
@@ -1631,7 +1631,8 @@ Deno.serve(async (req) => {
         `🔍 <b>Words searches</b> — Spot. Circle. Score.\n` +
         `🃏 <b>ChickenSolitaire</b> — Flip. Stack. Win.\n` +
         `🥊 <b>ChickenFight</b> — Peck. Dodge. Knock out.\n` +
-        `⚡ <b>ChickenReflex</b> — Tap fast. Beat the clock.`,
+        `⚡ <b>ChickenReflex</b> — Tap fast. Beat the clock.\n` +
+        `💥 <b>ChickenBlast</b> — Slide. Fill. Blast.`,
         [
           [{ text: '🐔 All games & Rooster Universe', url: MENU_DEEPLINK }],
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
@@ -1640,6 +1641,7 @@ Deno.serve(async (req) => {
           [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
           [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
           [{ text: '🥊 ChickenFight', url: CHICKENFIGHT_URL }, { text: '⚡ ChickenReflex', url: CHICKENREFLEX_URL }],
+          [{ text: '💥 ChickenBlast', url: CHICKENBLAST_URL }],
           [{ text: '📜 Game Rules', url: RULES_DEEPLINK }]
         ]
       ,
@@ -1655,7 +1657,8 @@ Deno.serve(async (req) => {
         `🔍 <b>Words searches</b> — Repère. Entoure. Score.\n` +
         `🃏 <b>ChickenSolitaire</b> — Retourne. Empile. Gagne.\n` +
         `🥊 <b>ChickenFight</b> — Frappe. Esquive. Assomme.\n` +
-        `⚡ <b>ChickenReflex</b> — Tape vite. Bats le chrono.`,
+        `⚡ <b>ChickenReflex</b> — Tape vite. Bats le chrono.\n` +
+        `💥 <b>ChickenBlast</b> — Glisse. Remplis. Explose.`,
         [
           [{ text: '🐔 Tous les jeux & univers Francis', url: MENU_DEEPLINK }],
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
@@ -1664,6 +1667,7 @@ Deno.serve(async (req) => {
           [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
           [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
           [{ text: '🥊 ChickenFight', url: CHICKENFIGHT_URL }, { text: '⚡ ChickenReflex', url: CHICKENREFLEX_URL }],
+          [{ text: '💥 ChickenBlast', url: CHICKENBLAST_URL }],
           [{ text: '📜 Règles des jeux', url: RULES_DEEPLINK }]
         ]
       )
@@ -2007,6 +2011,17 @@ Deno.serve(async (req) => {
            `⚡ <b>CHICKEN REFLEX</b>\nTap as fast as you can and beat the clock — test your reflexes! 🐔`),
         { reply_markup: { inline_keyboard: [
           [{ text: tr('⚡ Jouer à ChickenReflex','⚡ Play ChickenReflex'), url: CHICKENREFLEX_URL }]
+        ]}}
+      )
+      return new Response('ok')
+    }
+
+    if (btnIs(text, 'chickenblast')) {
+      await sendMessage(token, chatId,
+        tr(`💥 <b>CHICKEN BLAST</b>\nGlisse les blocs, remplis les lignes et fais tout exploser — sans chrono ni rotation ! 🐔`,
+           `💥 <b>CHICKEN BLAST</b>\nSlide the blocks, fill the lines and blast them away — no timer, no rotation! 🐔`),
+        { reply_markup: { inline_keyboard: [
+          [{ text: tr('💥 Jouer à ChickenBlast','💥 Play ChickenBlast'), url: CHICKENBLAST_URL }]
         ]}}
       )
       return new Response('ok')
