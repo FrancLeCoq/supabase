@@ -1781,7 +1781,7 @@ Deno.serve(async (req) => {
         `🕒 <b>Every day (Paris time):</b>\n` +
         `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — the last 12h, summed up\n` +
         `👉 18:05 — 🐓 <b>Trump Evening Brief</b> — the last 12h, summed up\n\n` +
-        `<i>Reposts (RT) are skipped — only his own original posts. No brief on the rare days he doesn't post.</i>`,
+        `<i>No brief on the rare days he doesn't post.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       ,
         `🇺🇸 <b>Trump News — le brief quotidien</b>\n\n` +
@@ -1789,7 +1789,7 @@ Deno.serve(async (req) => {
         `🕒 <b>Chaque jour (heure de Paris) :</b>\n` +
         `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — les 12 dernières heures résumées\n` +
         `👉 18:05 — 🐓 <b>Trump Evening Brief</b> — les 12 dernières heures résumées\n\n` +
-        `<i>Les reposts (RT) sont ignorés — uniquement ses posts originaux. Pas de résumé les rares jours sans post.</i>`,
+        `<i>Pas de résumé les rares jours sans post.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )
       await sendMessage(token, chatId, tr('✅ Trump News publié et épinglé dans les deux groupes.', '✅ Trump News posted and pinned in both groups.'))
