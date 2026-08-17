@@ -1781,7 +1781,6 @@ Deno.serve(async (req) => {
         `🕒 <b>Every day (Paris time):</b>\n` +
         `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — the last 12h, summed up\n` +
         `👉 18:05 — 🐓 <b>Trump Evening Brief</b> — the last 12h, summed up\n\n` +
-        `💰 Trump wanted to charge up to <b>$100,000/month</b> for early access to his posts. Here it's <b>100% FREE</b>. <b>That's the spirit of the coop.</b> 🐔\n\n` +
         `<i>Reposts (RT) are skipped — only his own original posts. No brief on the rare days he doesn't post.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Rooster Universe', url: MENU_DEEPLINK }]]
       ,
@@ -1790,7 +1789,6 @@ Deno.serve(async (req) => {
         `🕒 <b>Chaque jour (heure de Paris) :</b>\n` +
         `👉 06:05 — 🐓 <b>Trump Morning Brief</b> — les 12 dernières heures résumées\n` +
         `👉 18:05 — 🐓 <b>Trump Evening Brief</b> — les 12 dernières heures résumées\n\n` +
-        `💰 Trump voulait faire payer jusqu'à <b>100 000 $/mois</b> pour accéder en primeur à ses posts. Ici, c'est <b>100% GRATUIT</b>. <b>C'est ça, l'esprit de la basse-cour.</b> 🐔\n\n` +
         `<i>Les reposts (RT) sont ignorés — uniquement ses posts originaux. Pas de résumé les rares jours sans post.</i>`,
         [[{ text: '🔗 Wallet', url: WALLET_URL }, { text: '🐔 Univers Francis', url: MENU_DEEPLINK }]]
       )
