@@ -17,6 +17,9 @@ export const CHICKENFIGHT_URL  = 'https://t.me/FrancisLeCoqBot/ChickenFight'
 export const CHICKENREFLEX_URL = 'https://t.me/FrancisLeCoqBot/ChickenReflex'
 export const CHICKENBLAST_URL  = 'https://t.me/FrancisLeCoqBot/ChickenBlast'
 export const CHICKENHANG_URL   = 'https://t.me/FrancisLeCoqBot/ChickenHang'
+export const CHICKENMEMORY_URL = 'https://t.me/FrancisLeCoqBot/ChickenMemory'
+export const EGGSPONENTIAL_URL = 'https://t.me/FrancisLeCoqBot/Eggsponential'
+export const CHICKENMINE_URL   = 'https://t.me/FrancisLeCoqBot/ChickenMine'
 
 export const SUDOKU_URL     = 'https://t.me/FrancisLeCoqBot/Sudoku'
 
@@ -227,8 +230,8 @@ export const GAMES: Array<{
   },
   {
     key: 'chickenfight',
-    label: '🥊 ChickenFight',
-    playLabel: '🥊 Play ChickenFight',
+    label: '🥊 Chicken Fight',
+    playLabel: '🥊 Play Chicken Fight',
     url: CHICKENFIGHT_URL,
     rules:
       `🥊 <b>CHICKEN FIGHT — Le Coq Francis</b>\n\n` +
@@ -249,8 +252,8 @@ export const GAMES: Array<{
   },
   {
     key: 'chickenreflex',
-    label: '⚡ ChickenReflex',
-    playLabel: '⚡ Play ChickenReflex',
+    label: '⚡ Chicken Reflex',
+    playLabel: '⚡ Play Chicken Reflex',
     url: CHICKENREFLEX_URL,
     rules:
       `⚡ <b>CHICKEN REFLEX — Le Coq Francis</b>\n\n` +
@@ -271,9 +274,69 @@ export const GAMES: Array<{
       `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
   },
   {
+    key: 'chickenmemory',
+    label: '🧠 Chicken Memory',
+    playLabel: '🧠 Play Chicken Memory',
+    url: CHICKENMEMORY_URL,
+    rules:
+      `🧠 <b>CHICKEN MEMORY — Le Coq Francis</b>\n\n` +
+      `Flip. Match. Remember. — find every pair in Francis' henhouse! 🐓\n\n` +
+      `📋 <b>Rules:</b>\n` +
+      `👆 Tap a card to flip it, then a second — a match stays face-up, a miss flips back\n` +
+      `🏆 <b>Score:</b> +100 per pair, combo up to ×5 (+20 each), −8 per miss + speed & flawless bonuses\n` +
+      `💡 3 hints per game (reveal a pair) — $FRANC holders / ⭐ only\n` +
+      `🎯 Each mode keeps its own best score & time\n\n` +
+      `📊 <b>Difficulty:</b>\n` +
+      `🟢 Facile 6 pairs · 🟡 Normal 10 pairs — everyone\n` +
+      `🔴 Expert 15 pairs — $FRANC holders / ⭐\n\n` +
+      `💎 <b>Trial vs $FRANC Holder:</b>\n` +
+      `⏱️ <b>Free</b> — Facile & Normal\n` +
+      `♾️ <b>$FRANC Holders</b> — Expert + 3 hints per game\n\n` +
+      `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
+  },
+  {
+    key: 'eggsponential',
+    label: '📈 Eggsponential',
+    playLabel: '📈 Play Eggsponential',
+    url: EGGSPONENTIAL_URL,
+    rules:
+      `📈 <b>EGGSPONENTIAL — Le Coq Francis</b>\n\n` +
+      `Swipe. Merge. Grow. — a 2048 with eggs, chase the biggest one! 🐓\n\n` +
+      `📋 <b>Rules:</b>\n` +
+      `👆 Swipe ⬆️⬇️⬅️➡️ — all eggs slide, and two identical ones merge into the next tier\n` +
+      `🥚 A new egg appears after every move — it's over when the 4×4 grid is stuck\n` +
+      `🏆 Score from every merge; chain merges in one move for a multiplier bonus\n` +
+      `🎯 Reach the target egg to clear a level and climb the difficulty\n\n` +
+      `💎 <b>Trial vs $FRANC Holder:</b>\n` +
+      `⏱️ <b>Free</b> — classic play\n` +
+      `♾️ <b>$FRANC Holders</b> — bonus power-ups & premium features\n\n` +
+      `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
+  },
+  {
+    key: 'chickenmine',
+    label: '💣 Chicken Mine',
+    playLabel: '💣 Play Chicken Mine',
+    url: CHICKENMINE_URL,
+    rules:
+      `💣 <b>CHICKEN MINE — Le Coq Francis</b>\n\n` +
+      `Open. Flag. Don't wake the foxes! — Francis' minesweeper 🦊🐓\n\n` +
+      `📋 <b>Rules:</b>\n` +
+      `👆 Tap a cell to open it — numbers show how many 🦊 foxes hide around it\n` +
+      `🚩 Long-press (or Flag Mode) to flag a fox; tap a number with all its foxes flagged to auto-open the rest\n` +
+      `✅ The first cell is always safe — flag every fox and open all safe cells to win\n` +
+      `🏆 <b>Score:</b> foxes × 20 + speed bonus (up to ×2 under ~8s per fox)\n` +
+      `⭐ Power-ups unlock by total score: Flair (300), Beacon (700), Shield (1200) — once per game\n\n` +
+      `📊 <b>Difficulty:</b>\n` +
+      `🗺️ 12 levels across 5 worlds — from 8×8 (8 foxes) to 12×16 (46 foxes)\n\n` +
+      `💎 <b>Trial vs $FRANC Holder:</b>\n` +
+      `⏱️ <b>Free</b> — Level 1\n` +
+      `♾️ <b>$FRANC Holders</b> — Levels 2 → 12\n\n` +
+      `<i>Don't hold $FRANC yet? Connect your wallet and get yours!</i>`
+  },
+  {
     key: 'chickenblast',
-    label: '💥 ChickenBlast',
-    playLabel: '💥 Play ChickenBlast',
+    label: '💥 Chicken Blast',
+    playLabel: '💥 Play Chicken Blast',
     url: CHICKENBLAST_URL,
     rules:
       `💥 <b>CHICKEN BLAST — Le Coq Francis</b>\n\n` +
@@ -296,8 +359,8 @@ export const GAMES: Array<{
   },
   {
     key: 'chickenhang',
-    label: '🪝 ChickenHang',
-    playLabel: '🪝 Play ChickenHang',
+    label: '🪝 Chicken Hang',
+    playLabel: '🪝 Play Chicken Hang',
     url: CHICKENHANG_URL,
     rules:
       `🪝 <b>CHICKEN HANG — Le Coq Francis</b>\n\n` +
@@ -372,10 +435,13 @@ export const BTN = {
   snake:     { fr: '🐍 ChickenSnake',          en: '🐍 ChickenSnake' },
   wordsearch:{ fr: '🔍 Words searches',        en: '🔍 Words searches' },
   chickensolitaire:{ fr: '🃏 ChickenSolitaire', en: '🃏 ChickenSolitaire' },
-  chickenfight:{ fr: '🥊 ChickenFight', en: '🥊 ChickenFight' },
-  chickenreflex:{ fr: '⚡ ChickenReflex', en: '⚡ ChickenReflex' },
-  chickenblast:{ fr: '💥 ChickenBlast', en: '💥 ChickenBlast' },
-  chickenhang:{ fr: '🪝 ChickenHang', en: '🪝 ChickenHang' },
+  chickenfight:{ fr: '🥊 Chicken Fight', en: '🥊 Chicken Fight' },
+  chickenreflex:{ fr: '⚡ Chicken Reflex', en: '⚡ Chicken Reflex' },
+  chickenmemory:{ fr: '🧠 Chicken Memory', en: '🧠 Chicken Memory' },
+  eggsponential:{ fr: '📈 Eggsponential', en: '📈 Eggsponential' },
+  chickenmine:{ fr: '💣 Chicken Mine', en: '💣 Chicken Mine' },
+  chickenhang:{ fr: '🪝 Chicken Hang', en: '🪝 Chicken Hang' },
+  chickenblast:{ fr: '💥 Chicken Blast', en: '💥 Chicken Blast' },
   holders:   { fr: '🔞 Spicy (18+)',  en: '🔞 Spicy (18+)' },
   refresh:   { fr: '🔄 Rafraîchir le menu',    en: '🔄 Refresh menu' },
   rules:     { fr: '📜 Règles des jeux',       en: '📜 Game Rules' },
@@ -409,7 +475,9 @@ export function buildKeyboard(isFR: boolean) {
       [L('francrun'),   L('ormuz')],
       [L('wordsearch'), L('chickensolitaire')],
       [L('chickenfight'), L('chickenreflex')],
-      [L('chickenblast'), L('chickenhang')],
+      [L('chickenmemory'), L('eggsponential')],
+      [L('chickenmine'), L('chickenhang')],
+      [L('chickenblast')],
       [L('refresh'),    L('rules')],
       [L('holders')],
       [L('francTon'),   L('francSol')],
@@ -434,7 +502,9 @@ export function buildInlineMenu(isFR: boolean) {
     [{ text: L('francrun'), url: FRANCRUN_URL }, { text: L('ormuz'), url: ORMUZ_URL }],
     [{ text: L('wordsearch'), url: WORDSEARCH_URL }, { text: L('chickensolitaire'), url: SOLITAIRE_URL }],
     [{ text: L('chickenfight'), url: CHICKENFIGHT_URL }, { text: L('chickenreflex'), url: CHICKENREFLEX_URL }],
-    [{ text: L('chickenblast'), url: CHICKENBLAST_URL }, { text: L('chickenhang'), url: CHICKENHANG_URL }],
+    [{ text: L('chickenmemory'), url: CHICKENMEMORY_URL }, { text: L('eggsponential'), url: EGGSPONENTIAL_URL }],
+    [{ text: L('chickenmine'), url: CHICKENMINE_URL }, { text: L('chickenhang'), url: CHICKENHANG_URL }],
+    [{ text: L('chickenblast'), url: CHICKENBLAST_URL }],
     [{ text: L('refresh'), callback_data: 'start' }, { text: L('rules'), callback_data: 'rules_menu' }],
     [{ text: L('holders'), callback_data: 'holders' }],
     [{ text: L('francTon'), url: BUY_FRANC_TON_URL }, { text: L('francSol'), url: BUY_FRANC_SOL_URL }],
