@@ -308,15 +308,16 @@ async function geminiGen(prompt: string, temperature = 0.4): Promise<string> {
 }
 function briefPrompt(postsText: string, lang: 'English' | 'French'): string {
   return [
-    "You are Francis the rooster. Summarize Donald Trump's original Truth Social posts of the LAST 24 HOURS into ONE clean morning brief IN " + lang.toUpperCase() + '.',
-    "TRUMP'S POSTS (last 24h):", '---', postsText, '---',
+    "You are Francis the rooster. Summarize Donald Trump's original Truth Social posts of the LAST 12 HOURS into ONE clean brief IN " + lang.toUpperCase() + '.',
+    "TRUMP'S POSTS (last 12h):", '---', postsText, '---',
     'Output EXACTLY these marker lines (nothing before or after, no title):',
     'TOPIC: <emoji> <short topic, 3 to 8 words>',
     '(repeat TOPIC for each distinct topic — 3 to 7 TOPIC lines total)',
     'SUMMARY: <one factual paragraph, 3 to 5 sentences, on what Trump focused on and the main themes>',
-    'TAKE: <one short paragraph — Francis\' neutral, level-headed read of the last 24h. NO hype, NO partisan bias>',
+    "TAKE: <one short paragraph — Francis' neutral, level-headed read of these posts. NO hype, NO partisan bias>",
     'RULES:',
     '- Base everything ONLY on the posts above. NEVER invent. Neutral and factual — this is politically sensitive, keep zero bias.',
+    '- Do NOT state a specific time window (do not write "the last 24 hours" or "12 hours"); just refer to "recent posts" or "these posts".',
     '- Keep the markers EXACTLY: TOPIC:, SUMMARY:, TAKE:. Write the values in ' + lang.toUpperCase() + '.',
     '- If there are no real posts, output only: NONE',
     'Output ONLY the marker lines.',
