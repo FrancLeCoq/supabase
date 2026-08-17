@@ -211,8 +211,8 @@ export const GAMES: Array<{
   },
   {
     key: 'chickensolitaire',
-    label: '🃏 ChickenSolitaire',
-    playLabel: '🃏 Play ChickenSolitaire',
+    label: '🃏 Chicken Solitaire',
+    playLabel: '🃏 Play Chicken Solitaire',
     url: SOLITAIRE_URL,
     rules:
       `🃏 <b>CHICKEN SOLITAIRE — Le Coq Francis</b>\n\n` +
@@ -432,9 +432,9 @@ export const BTN = {
   francTon:  { fr: '💰 $FRANC sur TON',       en: '💰 $FRANC on TON' },
   langFr:    { fr: '🇫🇷 Français',             en: '🇫🇷 Français' },
   langEn:    { fr: '🇬🇧 English',              en: '🇬🇧 English' },
-  snake:     { fr: '🐍 ChickenSnake',          en: '🐍 ChickenSnake' },
+  snake:     { fr: '🐍 Chicken Snake',          en: '🐍 Chicken Snake' },
   wordsearch:{ fr: '🔍 Words searches',        en: '🔍 Words searches' },
-  chickensolitaire:{ fr: '🃏 ChickenSolitaire', en: '🃏 ChickenSolitaire' },
+  chickensolitaire:{ fr: '🃏 Chicken Solitaire', en: '🃏 Chicken Solitaire' },
   chickenfight:{ fr: '🥊 Chicken Fight', en: '🥊 Chicken Fight' },
   chickenreflex:{ fr: '⚡ Chicken Reflex', en: '⚡ Chicken Reflex' },
   chickenmemory:{ fr: '🧠 Chicken Memory', en: '🧠 Chicken Memory' },

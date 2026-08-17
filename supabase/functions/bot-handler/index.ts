@@ -1647,8 +1647,8 @@ Deno.serve(async (req) => {
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
           [{ text: '🔫 FrancRun', url: FRANCRUN_URL }, { text: '⛵ Ormuz', url: ORMUZ_URL }],
           [{ text: '🎯 Mastermind', url: MASTERMIND_URL }, { text: '🧩 Sudoku', url: SUDOKU_URL }],
-          [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
-          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
+          [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 Chicken Snake', url: SNAKE_URL }],
+          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 Chicken Solitaire', url: SOLITAIRE_URL }],
           [{ text: '🥊 Chicken Fight', url: CHICKENFIGHT_URL }, { text: '⚡ Chicken Reflex', url: CHICKENREFLEX_URL }],
           [{ text: '🧠 Chicken Memory', url: CHICKENMEMORY_URL }, { text: '📈 Eggsponential', url: EGGSPONENTIAL_URL }],
           [{ text: '💣 Chicken Mine', url: CHICKENMINE_URL }, { text: '🪝 Chicken Hang', url: CHICKENHANG_URL }],
@@ -1679,8 +1679,8 @@ Deno.serve(async (req) => {
           [{ text: '🐓 Tamagotchi', url: TAMAGOTCHI_URL }, { text: '🥚 EggClicker', url: EGGCLICKER_URL }],
           [{ text: '🔫 FrancRun', url: FRANCRUN_URL }, { text: '⛵ Ormuz', url: ORMUZ_URL }],
           [{ text: '🎯 Mastermind', url: MASTERMIND_URL }, { text: '🧩 Sudoku', url: SUDOKU_URL }],
-          [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 ChickenSnake', url: SNAKE_URL }],
-          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 ChickenSolitaire', url: SOLITAIRE_URL }],
+          [{ text: '🟢 Motus', url: MOTUS_URL }, { text: '🐍 Chicken Snake', url: SNAKE_URL }],
+          [{ text: '🔍 Words searches', url: WORDSEARCH_URL }, { text: '🃏 Chicken Solitaire', url: SOLITAIRE_URL }],
           [{ text: '🥊 Chicken Fight', url: CHICKENFIGHT_URL }, { text: '⚡ Chicken Reflex', url: CHICKENREFLEX_URL }],
           [{ text: '🧠 Chicken Memory', url: CHICKENMEMORY_URL }, { text: '📈 Eggsponential', url: EGGSPONENTIAL_URL }],
           [{ text: '💣 Chicken Mine', url: CHICKENMINE_URL }, { text: '🪝 Chicken Hang', url: CHICKENHANG_URL }],
@@ -2003,7 +2003,7 @@ Deno.serve(async (req) => {
         tr(`🃏 <b>CHICKEN SOLITAIRE</b>\nRetourne. Empile. Gagne. — le solitaire Klondike à l'effigie de Francis ! 🐔`,
            `🃏 <b>CHICKEN SOLITAIRE</b>\nFlip. Stack. Win. — the classic Klondike solitaire in Francis' universe! 🐔`),
         { reply_markup: { inline_keyboard: [
-          [{ text: tr('🃏 Jouer à ChickenSolitaire','🃏 Play ChickenSolitaire'), url: SOLITAIRE_URL }]
+          [{ text: tr('🃏 Jouer à Chicken Solitaire','🃏 Play Chicken Solitaire'), url: SOLITAIRE_URL }]
         ]}}
       )
       return new Response('ok')
@@ -2091,7 +2091,7 @@ Deno.serve(async (req) => {
         tr(`🐍 <b>CHICKEN SNAKE</b>\nGuide le serpent, gobe les œufs et bats ton record ! 🐔`,
            `🐍 <b>CHICKEN SNAKE</b>\nGuide the snake, gobble the eggs and beat your high score! 🐔`),
         { reply_markup: { inline_keyboard: [
-          [{ text: tr('🐍 Jouer à ChickenSnake','🐍 Play ChickenSnake'), url: SNAKE_URL }]
+          [{ text: tr('🐍 Jouer à Chicken Snake','🐍 Play Chicken Snake'), url: SNAKE_URL }]
         ]}}
       )
       return new Response('ok')
