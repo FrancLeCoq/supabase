@@ -2,7 +2,7 @@
 //  chickenblast-scores — Edge Function Supabase
 //  Classement du mode Aventure de Chicken Blast.
 //
-//  POST { initData, action:'top'|'submit', score?, levels? }
+//  POST { initData, action:'top'|'submit', score?, levels?, duration_ms? }
 //    • 'top'    → podium + la ligne du joueur (avec son rang)
 //    • 'submit' → enregistre un run termine puis renvoie le classement
 //
@@ -21,6 +21,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const MAX_SCORE   = 1_000_000   // garde-fou : au-dela, la valeur est refusee
 const MAX_LEVELS  = 50
+const MAX_RUN_MS  = 24 * 3600_000   // duree de partie plausible (24 h)
 const MAX_AGE_SEC = 24 * 3600   // fenetre anti-rejeu sur auth_date
 const TOP_N       = 3
 
@@ -105,6 +106,12 @@ function intIn(v: unknown, max: number): number | null {
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > max) return null
   return v
 }
+/** duree de partie : absente est legitime, une valeur invalide ne l'est pas */
+function msOrNull(v: unknown): number | null | undefined {
+  if (v === null || v === undefined) return null
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > MAX_RUN_MS) return undefined
+  return v
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -154,15 +161,18 @@ Deno.serve(async (req) => {
       }
       const score  = intIn(body?.score,  MAX_SCORE)
       const levels = intIn(body?.levels, MAX_LEVELS)
-      if (score === null || levels === null) {
+      // la duree sert a departager les ex aequo ; absente = accepte (ancien client)
+      const durMs  = msOrNull(body?.duration_ms)
+      if (score === null || levels === null || durMs === undefined) {
         return new Response(JSON.stringify({ ok: false, error: 'Invalid score' }), { status: 400, headers })
       }
       const { data, error } = await supabase.rpc('chickenblast_submit_score', {
-        p_player_id: user.id,
-        p_name:      user.name,
-        p_username:  user.username,
-        p_score:     score,
-        p_levels:    levels,
+        p_player_id:   user.id,
+        p_name:        user.name,
+        p_username:    user.username,
+        p_score:       score,
+        p_levels:      levels,
+        p_duration_ms: durMs,
       })
       if (error) {
         console.error('submit rpc error:', error.message)
