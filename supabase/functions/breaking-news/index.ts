@@ -217,8 +217,13 @@ async function fromRattibha(url: string): Promise<string[]> {
     const html = await res.text()
     const out: string[] = []; const seen = new Set<string>()
     let m: RegExpExecArray | null
-    const reName = /"name"\s*:\s*"([^"]{2,50})"/g
-    while ((m = reName.exec(html)) && out.length < 20) pushTrend(out, seen, m[1])
+    // Un objet tendance embarque un "name" ET un signal de tendance juste
+    // apres (volume/tweets/query/rang…). On EXIGE ce signal pour ne PAS
+    // ramasser les "name" parasites (nav, config, auteurs) qui polluaient la
+    // liste et ne correspondaient pas au site source.
+    const reTrend = /"name"\s*:\s*"([^"]{2,50})"[^{}]{0,200}?"(?:tweet_volume|tweet_count|tweets|volume|query|url|promoted_content|trend_?rank|context)"/gi
+    while ((m = reTrend.exec(html)) && out.length < 20) pushTrend(out, seen, m[1])
+    // Repli : hashtags visibles (toujours de vraies tendances).
     const reTag = /#[A-Za-z0-9_]{2,40}/g
     while ((m = reTag.exec(html)) && out.length < 25) pushTrend(out, seen, m[0])
     return out

@@ -147,17 +147,39 @@ async function francMc(): Promise<{ ton: number; sol: number }> {
 // -- Coin gagnant + detail (CoinGecko) -------------------------
 interface Coin { id: string; name: string; symbol: string; rank: number; change: number; change7d: number; change30d: number }
 // kind 'pump' -> plus gros GAGNANT 24h ; 'dump' -> plus grosse PERTE 24h.
+// Recupere UNE page CoinGecko avec re-essais (429 / erreur reseau transitoire).
+// Renvoie le tableau JSON, ou null apres N echecs. On NE laisse PAS un simple
+// 429 passager tuer tout le run (sinon plus aucun post -> dernier post fige).
+async function fetchMarketPage(page: number, headers: Record<string, string>): Promise<{ arr: any[] | null; status: number }> {
+  const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=' + page + '&price_change_percentage=24h,7d,30d'
+  let lastStatus = 0
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 2500))   // backoff 2.5s, 5s
+    try {
+      const res = await tfetch(url, { headers }, 15000)
+      lastStatus = res.status
+      if (res.status === 429 || res.status >= 500) continue   // limite de debit / panne -> on retente
+      if (!res.ok) return { arr: null, status: res.status }
+      const arr = await res.json()
+      if (!Array.isArray(arr)) return { arr: null, status: res.status }
+      return { arr, status: res.status }
+    } catch { lastStatus = -1 /* timeout / reseau -> on retente */ }
+  }
+  return { arr: null, status: lastStatus }
+}
 async function fetchTopMover(kind: 'pump' | 'dump'): Promise<{ coin: Coin | null; reason: string }> {
   const key = Deno.env.get('COINGECKO_API_KEY')
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (key) headers['x-cg-demo-api-key'] = key
   const coins: Coin[] = []
+  let pagesOk = 0
+  let lastStatus = 0
   for (const page of [1, 2]) {
-    const url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=' + page + '&price_change_percentage=24h,7d,30d'
-    const res = await tfetch(url, { headers })
-    if (!res.ok) return { coin: null, reason: 'CoinGecko HTTP ' + res.status }
-    const arr = await res.json()
-    if (!Array.isArray(arr)) return { coin: null, reason: 'CoinGecko: reponse inattendue' }
+    const { arr, status } = await fetchMarketPage(page, headers)
+    // Tolerance partielle : si la page 1 passe mais pas la page 2, on exploite
+    // quand meme les 250 premiers rangs (largement dans le Top 500).
+    if (!arr) { lastStatus = status; continue }
+    pagesOk++
     for (const c of arr) {
       const change = Number(c && (c.price_change_percentage_24h_in_currency != null ? c.price_change_percentage_24h_in_currency : c.price_change_percentage_24h))
       const change7d = Number(c && c.price_change_percentage_7d_in_currency)
@@ -169,6 +191,7 @@ async function fetchTopMover(kind: 'pump' | 'dump'): Promise<{ coin: Coin | null
       coins.push({ id: String((c && c.id) || ''), name: String((c && c.name) || ''), symbol: String((c && c.symbol) || '').toUpperCase(), rank, change, change7d, change30d })
     }
   }
+  if (pagesOk === 0) return { coin: null, reason: 'CoinGecko injoignable (HTTP ' + lastStatus + ') apres re-essais' }
   if (coins.length === 0) return { coin: null, reason: 'aucune donnee exploitable' }
   coins.sort((a, b) => kind === 'dump' ? a.change - b.change : b.change - a.change)
   return { coin: coins[0], reason: '' }
