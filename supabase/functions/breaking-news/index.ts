@@ -174,10 +174,10 @@ function xShareKeyboard(text: string) {
 }
 
 // Régions de tendances X supportées (/xtrend, /xtrendUS, /xtrendFR).
-const TREND_REGIONS: Record<string, { rattibha: string; trends24: string; label: string; flag: string; scope: string }> = {
-  world: { rattibha: 'https://en.rattibha.com/trends', trends24: 'https://trends24.in/', label: 'monde', flag: '🌍', scope: 'worldwide' },
-  us: { rattibha: 'https://en.rattibha.com/trends/united-states', trends24: 'https://trends24.in/united-states/', label: 'US', flag: '🇺🇸', scope: 'in the United States' },
-  fr: { rattibha: 'https://en.rattibha.com/trends/france', trends24: 'https://trends24.in/france/', label: 'France', flag: '🇫🇷', scope: 'in France' },
+const TREND_REGIONS: Record<string, { rattibha: string; trends24: string; getday: string; label: string; flag: string; scope: string }> = {
+  world: { rattibha: 'https://en.rattibha.com/trends', trends24: 'https://trends24.in/', getday: 'https://getdaytrends.com/', label: 'monde', flag: '🌍', scope: 'worldwide' },
+  us: { rattibha: 'https://en.rattibha.com/trends/united-states', trends24: 'https://trends24.in/united-states/', getday: 'https://getdaytrends.com/united-states/', label: 'US', flag: '🇺🇸', scope: 'in the United States' },
+  fr: { rattibha: 'https://en.rattibha.com/trends/france', trends24: 'https://trends24.in/france/', getday: 'https://getdaytrends.com/france/', label: 'France', flag: '🇫🇷', scope: 'in France' },
 }
 function trendRegion(r: string) { return TREND_REGIONS[r] || TREND_REGIONS.world }
 
@@ -244,18 +244,43 @@ async function fromTrends24(url: string): Promise<string[]> {
     return out
   } catch { return [] }
 }
+// getdaytrends.com (SSR fiable, régionalisé). Chaque tendance est un lien
+// dont l'URL contient "/trend/". Source très proche de ce que voit l'utilisateur.
+async function fromGetDayTrends(url: string): Promise<string[]> {
+  try {
+    const res = await tfetch(url, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html' } }, 15000)
+    if (!res.ok) return []
+    const html = await res.text()
+    const out: string[] = []; const seen = new Set<string>()
+    let m: RegExpExecArray | null
+    const re = /<a\b[^>]*href="[^"]*\/trend\/[^"]*"[^>]*>([^<]{2,60})<\/a>/gi
+    while ((m = re.exec(html)) && out.length < 20) pushTrend(out, seen, m[1])
+    return out
+  } catch { return [] }
+}
 // Renvoie jusqu'à 10 tendances live + la source utilisée, pour la région donnée.
+// On épuise TOUTES les sources SSR fiables (trends24, getdaytrends, rattibha)
+// AVANT de tomber sur la recherche IA "grounded" — qui, faute de vraies
+// données, hallucinait des tendances absentes du site source.
 async function fetchTrends(region: string): Promise<{ trends: string[]; source: string }> {
   const r = trendRegion(region)
-  const rat = await fromRattibha(r.rattibha)
-  if (rat.length >= 6) return { trends: rat.slice(0, 10), source: 'rattibha' }
-  const t24 = await fromTrends24(r.trends24)
-  if (t24.length >= 6) return { trends: t24.slice(0, 10), source: 'trends24' }
+  const sources: [string, () => Promise<string[]>][] = [
+    ['trends24', () => fromTrends24(r.trends24)],
+    ['getdaytrends', () => fromGetDayTrends(r.getday)],
+    ['rattibha', () => fromRattibha(r.rattibha)],
+  ]
+  let best: string[] = []; let bestSrc = ''
+  for (const [name, fn] of sources) {
+    const got = await fn()
+    if (got.length >= 6) return { trends: got.slice(0, 10), source: name }
+    if (got.length > best.length) { best = got; bestSrc = name }
+  }
+  if (best.length >= 3) return { trends: best.slice(0, 10), source: bestSrc }
+  // Dernier recours seulement : IA grounded (peut être approximatif).
   const raw = await groundedSearch(trendsSearchPrompt(region))
   const gs = (raw || '').split(NL).map((t) => t.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, '').trim()).filter(Boolean).slice(0, 10)
-  const best = rat.length >= t24.length ? rat : t24
-  if (best.length) return { trends: best.slice(0, 10), source: best === rat ? 'rattibha' : 'trends24' }
-  return { trends: gs, source: 'grounded' }
+  if (gs.length) return { trends: gs, source: 'grounded' }
+  return { trends: best.slice(0, 10), source: bestSrc || 'grounded' }
 }
 // Clavier sous le post viral : Copier + Publier sur X + lien Rattibha (tendances).
 function xtrendKeyboard(text: string, rattibhaUrl: string) {
