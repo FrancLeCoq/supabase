@@ -188,6 +188,17 @@ async function fetchTopMover(kind: 'pump' | 'dump'): Promise<{ coin: Coin | null
       if (!isFinite(change) || !rank || rank > 500) continue
       if (kind === 'pump' && change > 500) continue     // anomalie de pump (donnee aberrante)
       if (kind === 'dump' && change < -95) continue      // quasi-mort / delisting -> on ignore
+      // -- Anti "jeton mort / prix gelé" ---------------------------------
+      // Un % 24h identique pendant des jours = feed de prix figé sur un jeton
+      // illiquide (ex: un stablecoin € affiché à +262 % en boucle). Un VRAI
+      // mouvement de ±60/260 % s'accompagne TOUJOURS d'un gros volume. On
+      // exige donc un prix récemment rafraîchi ET une liquidité réelle.
+      const volume = Number(c && c.total_volume)
+      const mcap = Number(c && c.market_cap)
+      const lastUpd = Date.parse(String(c && c.last_updated))
+      if (isFinite(lastUpd) && Date.now() - lastUpd > 24 * 3600 * 1000) continue   // prix non rafraîchi depuis >24h
+      if (!isFinite(volume) || volume < 250000) continue                            // volume 24h dérisoire
+      if (isFinite(mcap) && mcap > 0 && volume < mcap * 0.002) continue             // volume < 0,2 % du market cap = illiquide
       coins.push({ id: String((c && c.id) || ''), name: String((c && c.name) || ''), symbol: String((c && c.symbol) || '').toUpperCase(), rank, change, change7d, change30d })
     }
   }
